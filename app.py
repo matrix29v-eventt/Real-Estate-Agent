@@ -180,16 +180,21 @@ def render_conversation_tab():
             decision = lead.get("current_action", "")
             if decision == "ESCALATE_TO_BROKER":
                 st.success(
-                    f"✅ This lead is ready for broker escalation! Intent: {lead['intent_tier']} ({lead['intent_score']}/100). Broker should prioritize contacting this lead."
+                    f"🎉 Great news! Your lead has been flagged as HIGH INTENT ({lead['intent_score']}/100). A broker will be in touch with you shortly to schedule a property viewing. Thank you for your interest!"
                 )
+                st.markdown("**📋 What happens next:**")
+                st.write("1. A broker will contact you at the provided contact details")
+                st.write("2. They will discuss the best matching properties")
+                st.write("3. A property viewing will be scheduled at your convenience")
                 from services.agent import generate_broker_summary
 
                 matches = st.session_state.get("current_matches", [])
                 summary = generate_broker_summary(lead, matches[:3])
-                st.text_area("Broker Summary", value=summary, height=200)
+                with st.expander("📄 Broker Internal Summary (click to view)"):
+                    st.text_area("Broker Summary", value=summary, height=200)
             elif decision == "SHOW_MATCHING_PROPERTIES":
                 st.success(
-                    f"🔍 Matching properties found! Showing top matches for {lead['intent_tier']} lead."
+                    f"🔍 We found matching properties for your requirements! Below are the top picks."
                 )
                 from services.property_matcher import match_properties
                 from data.properties import PROPERTIES as ALL_PROPS
@@ -204,6 +209,10 @@ def render_conversation_tab():
                     )
                     for r in m["reasons"][:3]:
                         st.write(f"  • {r}")
+                st.markdown("---")
+                st.info(
+                    "If any property interests you, a broker can arrange a viewing. Just reply below!"
+                )
             else:
                 st.info("✅ Lead profile updated. Continue conversation if needed.")
 
