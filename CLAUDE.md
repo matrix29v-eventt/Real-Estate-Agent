@@ -36,7 +36,17 @@ python scripts/run_scenarios.py      # manual end-to-end demo, needs a real mode
    fits, say nothing fits.
 6. **Never commit secrets.** `.env` is git-ignored; `.env.example` holds names
    with empty values.
-7. **Context merges, never resets.** A follow-up answer must preserve everything
+7. **The sign-in is a demo role switch, never call it authentication.**
+   `services/auth.py` has no accounts, stores no passwords, and gates broker
+   access on one shared plain-text code. Do not add password hashing, "secure
+   login" wording, or anything that implies it protects real data. If real auth
+   is ever needed, replace the module with an identity provider.
+8. **Buyers never see broker internals.** Intent scores, the heuristic rubric,
+   the decision enum and the broker draft are broker-facing. `ui/buyer.py`
+   translates the decision into buyer-appropriate wording via `BUYER_STATUS`.
+   Always scope buyer queries with `db.list_leads(owner=...)` and verify
+   `lead["owner"]` before rendering a lead in the buyer portal.
+9. **Context merges, never resets.** A follow-up answer must preserve everything
    already known (`agent._merge_preserving` is the safety net behind the model).
 
 ## Where things live
@@ -57,7 +67,12 @@ python scripts/run_scenarios.py      # manual end-to-end demo, needs a real mode
 - Money is whole rupees internally; format for display with `models.schemas.money`.
 - Tests must not hit the network — use `ScriptedProvider` from `tests/conftest.py`.
 - Views are render-tested with `streamlit.testing.v1.AppTest`
-  (`tests/test_ui_smoke.py`); add a case there when you add a view.
+  (`tests/test_ui_smoke.py`); add a case there when you add a view. Inject a
+  role with `app.session_state[auth.SESSION_KEY] = <Account>`; without one the
+  app renders the login page.
+- Schema changes must be added to `db._migrate()` as well as `SCHEMA`, so an
+  existing demo database survives. Indexes on new columns belong in `_migrate`,
+  not `SCHEMA` — `SCHEMA` runs before the column exists.
 - Navigation uses a keyed `active_view` selector, not `st.tabs`, because
   `st.tabs` resets to the first tab on every rerun. Switch views by setting
   `st.session_state["pending_view"]` and calling `st.rerun()`.

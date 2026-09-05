@@ -4,7 +4,7 @@
 > from the repository alone, with no additional explanation from the user.
 > Update after every meaningful milestone.
 
-**Last updated:** phase 7 — application complete, pushed, 66 tests green, three live-use issues found and fixed.
+**Last updated:** phase 8 — buyer/broker sign-in added, 90 tests green.
 
 ---
 
@@ -66,19 +66,23 @@ Python 3.11 · Streamlit 1.63 · SQLite (stdlib `sqlite3`) · Pandas · Pydantic
 │   ├── signals.py             # missing fields, contradictions, heuristic rubric
 │   ├── llm_service.py         # provider abstraction (Anthropic / Ollama)
 │   ├── agent.py               # the two-stage pipeline + persistence
+│   ├── auth.py                # demo roles + broker access code (NOT real auth)
 │   └── drafts.py              # in-app draft rendering (never sends)
 ├── ui/
 │   ├── components.py          # shared render helpers
-│   ├── new_lead.py            # tab A
-│   ├── analysis.py            # tab B (+ rebuild_from_db)
-│   └── dashboard.py           # tab C
+│   ├── login.py               # sign-in screen (buyer / broker)
+│   ├── buyer.py               # buyer portal (own leads only)
+│   ├── new_lead.py            # broker view A
+│   ├── analysis.py            # broker view B (+ rebuild_from_db)
+│   ├── dashboard.py           # broker view C
+│   └── properties.py          # broker view D (inventory browser)
 ├── data/
 │   ├── property_seed.py       # 53 synthetic properties
 │   ├── lead_seed.py           # 20 historical leads
 │   └── realestate.db          # generated, git-ignored
 ├── scripts/
 │   └── run_scenarios.py       # manual end-to-end demo harness (needs a real model)
-└── tests/                     # 66 pytest tests, no network
+└── tests/                     # 90 pytest tests, no network
     ├── conftest.py            # temp_db fixture + ScriptedProvider
     ├── test_db.py  test_matcher.py  test_signals.py
     ├── test_schemas.py  test_agent.py
@@ -92,7 +96,7 @@ Python 3.11 · Streamlit 1.63 · SQLite (stdlib `sqlite3`) · Pandas · Pydantic
 | Table | Key fields |
 |---|---|
 | `properties` | `property_id` PK, name, location, property_type, bhk, price, sqft, parking, furnishing, amenities (CSV), availability, builder, possession_status, possession_date, tags (CSV), created_at |
-| `leads` | `lead_id` PK, name, contact, original_inquiry, `requirements_json`, intent_score, intent_tier, status, current_action, recommended_next_step, `summary_json`, created_at, updated_at |
+| `leads` | `lead_id` PK, `owner` (buyer account, NULL for seeded leads), name, contact, original_inquiry, `requirements_json`, intent_score, intent_tier, status, current_action, recommended_next_step, `summary_json`, created_at, updated_at |
 | `conversations` | `turn_id` PK, lead_id, turn_index, role (`buyer`/`agent`), message, created_at |
 | `agent_actions` | `action_id` PK, lead_id, timestamp, decision, intent_score, intent_tier, `reasoning_json`, `input_snapshot`, `output_snapshot`, status_before, status_after, llm_provider |
 
@@ -186,6 +190,23 @@ Invalid output → one retry with the validation error fed back → then
   by setting `st.session_state["pending_view"]` then `st.rerun()`; `app.py`
   applies it before the widget renders (a widget key cannot be written after the
   widget exists in the same run).
+- **Sign-in is a demo role switch, deliberately not authentication.** The brief
+  rules out auth systems as unnecessary infrastructure, but two audiences were
+  requested. So: buyers sign in with a name only; brokers need one shared code
+  from `BROKER_ACCESS_CODE` (default `broker123`, published in `.env.example`
+  and on the login page). No accounts, no password storage, no hashing theatre.
+  The login page and README both say plainly that it is not security.
+- **Buyers never see broker internals.** No intent score, rubric, decision enum
+  or broker draft; `ui/buyer.py` maps each decision to buyer-appropriate wording
+  through `BUYER_STATUS`. Showing a buyer "22/100, deprioritised" would be a bad
+  experience and is not information they are owed.
+- **Lead ownership is a column, not a join table.** `leads.owner` holds the
+  buyer's normalised username; `list_leads(owner=...)` scopes the portal. Seeded
+  historical leads have `owner = NULL`, so they belong to no buyer and appear
+  only to brokers.
+- **New columns go in `_migrate()`, and their indexes must too.** A test caught
+  the ordering bug: `SCHEMA` ran `CREATE INDEX ... ON leads(owner)` before the
+  migration added the column, so opening a pre-ownership database crashed.
 - **`run_turn` rolls back a lead it created if the turn fails.** Observed twice
   in live use against a slow local model: a timeout left a half-formed `NEW` lead
   with a conversation turn and no decision sitting in the dashboard. Existing
@@ -209,7 +230,8 @@ Invalid output → one retry with the validation error fed back → then
 - [x] Decision audit trail with input/output snapshots
 - [x] Streamlit UI — 3 tabs (New Lead, Lead Analysis, Dashboard)
 - [x] In-app draft rendering; nothing is sent externally
-- [x] 66 pytest tests, all passing, no network (incl. AppTest render smoke tests)
+- [x] 90 pytest tests, all passing, no network (incl. AppTest render smoke tests)
+- [x] Buyer/broker sign-in, lead ownership, buyer portal, inventory browser
 - [x] `scripts/run_scenarios.py` demo harness
 - [x] README.md + CLAUDE.md + this file
 - [x] All three views verified rendering (AppTest + browser)
@@ -224,7 +246,7 @@ Invalid output → one retry with the validation error fed back → then
 
 - `streamlit run app.py` starts, seeds the DB and renders all three views
   (verified both in a browser and headlessly via `AppTest`).
-- `python -m pytest -q` → **66 passed**.
+- `python -m pytest -q` → **90 passed**.
 - `scripts/run_scenarios.py` ran all five demo scenarios end to end against a
   local Ollama model with **0 pipeline failures** — extraction, context merging,
   matching, evidence, decision, persistence and status transitions all worked.
@@ -267,7 +289,7 @@ This is a model-capability ceiling, not a code defect. The prompts are written
 for `claude-opus-5`; set `ANTHROPIC_API_KEY` for the intended behaviour.
 
 **Fresh-clone verified:** `git clone -b claude/lead-qualification-agent ...` into
-a clean directory contains no `.env` and passes all 66 tests.
+a clean directory contains no `.env` and passes all 90 tests.
 
 **Note on the local `.env`:** a `.env` exists in the working tree (created by the
 user) pointing at `ollama/gemma4`. It is git-ignored and untracked. Because
@@ -307,7 +329,8 @@ switch to Anthropic — the default timeout is what produced the orphan leads.
 ## Environment Variables (names only — never values)
 
 `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `OLLAMA_BASE_URL`,
-`OLLAMA_MODEL`, `REALESTATE_DB`, `LLM_TIMEOUT_SECONDS`.
+`OLLAMA_MODEL`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `BROKER_ACCESS_CODE`,
+`REALESTATE_DB`, `LLM_TIMEOUT_SECONDS`.
 
 ---
 
@@ -391,10 +414,23 @@ port 8520**. If the UI looks out of date, check for stale processes:
 
 ---
 
+## Signing in (demo)
+
+| Role | How | Sees |
+|---|---|---|
+| Buyer | Any name, no code | Own enquiries only; no scores, no rubric, no drafts |
+| Broker | Name + `BROKER_ACCESS_CODE` (default `broker123`) | Everything: 4 views |
+
+---
+
 ## Last Work Performed
 
-Added per-stage progress reporting (`on_stage` callback plus `st.status` with
-elapsed seconds) after a live report that the app looked frozen; measured local
+Added buyer/broker sign-in (`services/auth.py`, `ui/login.py`, `ui/buyer.py`,
+`ui/properties.py`), lead ownership with an in-place database migration, and 24
+tests covering sign-in, lead isolation and the migration. The user separately
+added a Gemini provider, which is kept as-is.
+Earlier: added per-stage progress reporting (`on_stage` callback plus `st.status`
+with elapsed seconds) after a live report that the app looked frozen; measured local
 model speeds and added a sidebar warning for local providers;
 replaced `st.tabs` with a keyed view selector so navigation survives reruns;
 made `run_turn` roll back a lead it created when a turn fails; added

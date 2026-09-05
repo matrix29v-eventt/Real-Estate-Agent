@@ -35,6 +35,9 @@ structured lead summary**, persisted with a full audit trail.
 
 ## 3. Features
 
+- **Two roles behind a sign-in.** Buyers submit an enquiry and follow their own
+  lead; brokers see the full pipeline, every conversation and the inventory.
+  (Demo role switch, not authentication — see section 15.)
 - Natural-language inquiry understanding with **context merging across turns** —
   answering a follow-up never resets what the buyer already said.
 - **Dynamic follow-up questions** chosen from what is actually missing, not a
@@ -53,6 +56,7 @@ structured lead summary**, persisted with a full audit trail.
 - **Persistent lead records, conversations and a decision audit trail** with
   visible status transitions (`NEW → NEEDS_INFORMATION → BROKER_ESCALATION`).
 - Broker dashboard with tier/status filters and per-lead inspection.
+- Broker-only property inventory browser with area/type/BHK/price filters.
 
 ---
 
@@ -145,7 +149,11 @@ flowchart TD
 | `services/llm_service.py` | Provider abstraction, structured JSON, recovery |
 | `services/agent.py` | The two-stage pipeline and persistence |
 | `services/drafts.py` | Draft rendering (never sends) |
-| `ui/` | The three view modules and shared render helpers |
+| `services/auth.py` | Demo roles, name normalisation, broker access code |
+| `ui/login.py` | Sign-in screen (buyer / broker) |
+| `ui/buyer.py` | Buyer portal: submit an enquiry, follow it, see matches |
+| `ui/properties.py` | Broker-only inventory browser |
+| `ui/` | View modules and shared render helpers |
 | `data/property_seed.py` | 53 synthetic Trivandrum properties |
 | `data/lead_seed.py` | 20 historical leads with conversations and decisions |
 | `scripts/run_scenarios.py` | Manual end-to-end demo harness |
@@ -201,7 +209,7 @@ the real matching engine, not hand-written.
 | Table | Purpose | Key fields |
 |---|---|---|
 | `properties` | Synthetic inventory | `property_id` PK, location, price, bhk, availability, tags |
-| `leads` | Current structured lead state | `lead_id` PK, `requirements_json`, `intent_score`, `intent_tier`, `status`, `current_action`, `summary_json`, timestamps |
+| `leads` | Current structured lead state | `lead_id` PK, `owner` (buyer account), `requirements_json`, `intent_score`, `intent_tier`, `status`, `current_action`, `summary_json`, timestamps |
 | `conversations` | Every buyer/agent turn | `lead_id`, `turn_index`, `role`, `message` |
 | `agent_actions` | Decision audit trail | `decision`, `reasoning_json`, `intent_score`, `input_snapshot`, `output_snapshot`, `status_before`, `status_after`, `llm_provider` |
 
@@ -237,6 +245,7 @@ Copy `.env.example` to `.env`. **Never commit `.env`** — it is git-ignored.
 | `ANTHROPIC_MODEL` | Defaults to `claude-opus-5` |
 | `OLLAMA_BASE_URL` | Local Ollama endpoint |
 | `OLLAMA_MODEL` | Local model name |
+| `BROKER_ACCESS_CODE` | Shared demo code unlocking the broker view (default `broker123`) |
 | `REALESTATE_DB` | Override the SQLite file path |
 | `LLM_TIMEOUT_SECONDS` | Per-call timeout |
 
@@ -250,7 +259,17 @@ streamlit run app.py
 ```
 
 The database is created and seeded automatically on first launch at
-`data/realestate.db`. "Reset demo data" in the sidebar restores it.
+`data/realestate.db`. "Reset demo data" in the broker sidebar restores it.
+
+### Signing in
+
+| Role | How | What you get |
+|---|---|---|
+| **Buyer** | Any name, no code | Submit an enquiry, answer follow-ups, see your matched properties and your own enquiries |
+| **Broker** | Name + access code (`broker123` by default) | All three pipeline views plus the property inventory |
+
+Sign in as a buyer in one browser and a broker in a private window to watch an
+enquiry arrive in the broker pipeline.
 
 ---
 
@@ -317,6 +336,12 @@ provider so results are deterministic. Coverage:
 
 ## 12. Limitations
 
+- **The sign-in is a demo role switch, not authentication.** There are no user
+  accounts, no passwords are stored, and broker access is one shared code held
+  in plain text in the environment. Buyers are identified by the name they type,
+  so anyone who types the same name reaches the same enquiries. Lead ownership
+  separates the two demo experiences; it is not a security boundary. A real
+  deployment would replace `services/auth.py` with an identity provider.
 - **Buyer intent is not identity verification.** Nothing here performs KYC,
   proves who anyone is, or validates documents. It assesses lead quality and
   purchase readiness from what the buyer says.
@@ -353,6 +378,7 @@ provider so results are deterministic. Coverage:
 
 This application:
 
+- **does not** authenticate anyone — the sign-in is a demo role switch;
 - **does not** send email, SMS, WhatsApp or any external message — every
   notification is a draft displayed in the UI;
 - **does not** perform KYC or identity verification;
