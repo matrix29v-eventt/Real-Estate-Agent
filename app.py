@@ -29,6 +29,13 @@ def _sidebar() -> None:
         if status["configured"]:
             active = status["active"]
             st.success(f"LLM ready: `{active['provider']}` / `{active['model']}`")
+            if active["provider"] == "ollama":
+                st.caption(
+                    f"Local model. Each turn makes 2 calls, so a turn can take "
+                    f"minutes on CPU — the timeout is "
+                    f"{config.LLM_TIMEOUT_SECONDS:.0f}s per call. If turns are too "
+                    f"slow, use a smaller model or set ANTHROPIC_API_KEY."
+                )
         else:
             st.error("No LLM configured — the agent cannot reason.")
             st.caption(

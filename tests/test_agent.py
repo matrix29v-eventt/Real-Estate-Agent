@@ -257,3 +257,57 @@ def test_failed_turn_preserves_an_existing_lead(temp_db):
     assert lead is not None
     assert lead["requirements"]["budget_max"] == 6_000_000
     assert len(temp_db.get_actions(first.lead_id)) == 1
+
+
+def test_progress_callback_reports_every_stage(temp_db):
+    """A turn must report progress: silence on a slow model looks like a hang."""
+    stages = []
+    provider = ScriptedProvider([
+        extraction_payload(budget_max=6_000_000, locations=["Pattom"], bhk=2),
+        decision_payload(),
+    ])
+    agent.run_turn("2BHK in Pattom for 60 lakh", provider=provider,
+                   on_stage=stages.append)
+
+    assert len(stages) == 4
+    joined = " | ".join(stages).lower()
+    for expected in ("understanding", "matching inventory", "reasoning", "saving"):
+        assert expected in joined, f"missing stage {expected!r} in {stages}"
+
+
+def test_turn_runs_without_a_progress_callback(temp_db):
+    provider = ScriptedProvider([
+        extraction_payload(property_type="Apartment"),
+        decision_payload(decision="LOW_PRIORITY_OR_DISCARD", intent_tier="LOW",
+                         intent_score=15, draft_message=None),
+    ])
+    result = agent.run_turn("Can you show me some nice apartments? "
+                            "I'm only browsing for now.", provider=provider)
+    assert result.decision.decision.value == "LOW_PRIORITY_OR_DISCARD"
+    assert result.status == LeadStatus.LOW_PRIORITY.value
+
+
+def test_browsing_only_inquiry_is_handled_end_to_end(temp_db):
+    """A buyer who states no criteria at all must still produce a full decision."""
+    provider = ScriptedProvider([
+        extraction_payload(property_type="Apartment", notes=["Explicitly browsing only"]),
+        decision_payload(
+            intent_score=15, intent_tier="LOW", decision="LOW_PRIORITY_OR_DISCARD",
+            reasoning=["Buyer states they are only browsing", "No budget, area or timeline"],
+            missing_information=["Budget range", "Preferred location(s)", "Purchase timeline"],
+            recommended_next_step="Keep off the broker queue until specifics arrive.",
+            draft_message=None,
+        ),
+    ])
+    result = agent.run_turn("Can you show me some nice apartments? "
+                            "I'm only browsing for now.", provider=provider)
+
+    # Matching against no stated criteria must be flagged as uninformative.
+    assert result.evidence.inventory_stats["matching_is_meaningful"] is False
+    assert result.evidence.strong_match_count == 0
+    assert result.evidence.heuristic_score < 20
+    # A discard implies no outgoing message.
+    assert drafts.resolve_draft(result.lead_id, result.requirements,
+                                result.decision, result.matches) is None
+    assert temp_db.get_lead(result.lead_id)["status"] == LeadStatus.LOW_PRIORITY.value
+    assert len(temp_db.get_actions(result.lead_id)) == 1

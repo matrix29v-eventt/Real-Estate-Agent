@@ -20,7 +20,7 @@ explicitly told it is not a threshold.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from models.schemas import (
     AgentDecision,
@@ -436,8 +436,14 @@ def run_turn(
     name: Optional[str] = None,
     contact: Optional[str] = None,
     provider: Optional[LLMProvider] = None,
+    on_stage: Optional[Callable[[str], None]] = None,
 ) -> TurnResult:
-    """Run one full agent turn and persist everything it produced."""
+    """Run one full agent turn and persist everything it produced.
+
+    ``on_stage`` is called with a short human-readable label as each stage
+    begins, so a caller can show progress. A turn makes two LLM calls and can
+    take minutes on a slow local model; silence looks like a hang.
+    """
     message = (message or "").strip()
     if not message:
         raise ValueError("An inquiry message is required.")
@@ -455,7 +461,8 @@ def run_turn(
         lead = db.get_lead(lead_id)
 
     try:
-        return _run_turn_inner(message, lead_id, lead, name, contact, provider)
+        return _run_turn_inner(message, lead_id, lead, name, contact, provider,
+                               on_stage or (lambda _label: None))
     except Exception:
         # A turn that never reached a decision must not leave a half-formed lead
         # sitting in the dashboard. Only roll back a lead this call created;
@@ -472,6 +479,7 @@ def _run_turn_inner(
     name: Optional[str],
     contact: Optional[str],
     provider: LLMProvider,
+    on_stage: Callable[[str], None],
 ) -> TurnResult:
     warnings: List[str] = []
 
@@ -487,6 +495,7 @@ def _run_turn_inner(
     db.add_turn(lead_id, "buyer", message)
 
     # --- stage 1: understanding --------------------------------------------
+    on_stage("Understanding the inquiry and merging it with what is already known")
     req = extract_requirements(message, previous, history, provider)
     if name:
         req.name = name
@@ -496,6 +505,7 @@ def _run_turn_inner(
         req.original_inquiry = lead.get("original_inquiry") or message
 
     # --- deterministic middle ----------------------------------------------
+    on_stage("Matching inventory and computing evidence")
     properties = db.list_properties()
     matches = matcher.match_properties(req, properties, limit=5)
     turn_count = db.buyer_turn_count(lead_id)
@@ -506,6 +516,7 @@ def _run_turn_inner(
     )
 
     # --- stage 2: judgement -------------------------------------------------
+    on_stage("Reasoning about the next business action")
     decision = reason_next_action(req, evidence, matches, history + [
         {"role": "buyer", "message": message}
     ], provider)
@@ -517,6 +528,7 @@ def _run_turn_inner(
         )
 
     # --- persist -------------------------------------------------------------
+    on_stage("Saving the decision and audit trail")
     status_after = decision.status
     summary = build_summary(lead_id, req, decision, matches, evidence)
 

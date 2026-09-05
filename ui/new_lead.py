@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
 import config
@@ -35,15 +37,26 @@ def _prefill(text: str) -> None:
 
 
 def _process(message: str, name: str, contact: str, lead_id: str | None) -> None:
-    with st.spinner("Agent is reading the inquiry, checking inventory and deciding..."):
+    started = time.monotonic()
+    status = st.status("Starting the agent...", expanded=True)
+
+    def on_stage(label: str) -> None:
+        # A turn makes two LLM calls. On a slow local model each can take
+        # minutes, so show which stage is running and how long it has been.
+        status.update(label=f"{label}  ({time.monotonic() - started:.0f}s)")
+        status.write(label)
+
+    with status:
         try:
             result = agent.run_turn(
                 message,
                 lead_id=lead_id,
                 name=name.strip() or None,
                 contact=contact.strip() or None,
+                on_stage=on_stage,
             )
         except LLMUnavailable as exc:
+            status.update(label="No LLM configured", state="error")
             st.session_state["agent_error"] = (
                 f"No LLM is configured, so no analysis was performed.\n\n{exc}\n\n"
                 "Set ANTHROPIC_API_KEY in your .env (or run a local Ollama model) "
@@ -51,6 +64,10 @@ def _process(message: str, name: str, contact: str, lead_id: str | None) -> None
             )
             return
         except LLMCallError as exc:
+            status.update(
+                label=f"Model call failed after {time.monotonic() - started:.0f}s",
+                state="error",
+            )
             hint = ""
             if "timed out" in str(exc).lower():
                 hint = (
@@ -62,10 +79,17 @@ def _process(message: str, name: str, contact: str, lead_id: str | None) -> None
             st.session_state["agent_error"] = f"The model call failed: {exc}{hint}"
             return
         except ValueError as exc:
+            status.update(label="Could not run the turn", state="error")
             st.session_state["agent_error"] = str(exc)
             return
 
+    elapsed = time.monotonic() - started
+    status.update(
+        label=f"Decision: {result.decision.decision.value} ({elapsed:.0f}s)",
+        state="complete",
+    )
     st.session_state["agent_error"] = None
+    st.session_state["last_turn_seconds"] = elapsed
     st.session_state["active_lead_id"] = result.lead_id
     st.session_state["last_result"] = result
     st.session_state["inquiry_text"] = ""
@@ -124,7 +148,12 @@ def render() -> None:
         return
 
     st.divider()
-    st.markdown(f"### Active lead `{active_lead_id}`")
+    header, timing = st.columns([3, 1])
+    header.markdown(f"### Active lead `{active_lead_id}`")
+    seconds = st.session_state.get("last_turn_seconds")
+    if seconds:
+        timing.caption(f"Last turn took {seconds:.0f}s "
+                       f"({result.llm_provider or 'model'}, 2 calls)")
 
     components.render_intent_header(result.decision, result.evidence)
     components.render_next_action(result.decision)
