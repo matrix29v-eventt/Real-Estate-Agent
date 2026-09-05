@@ -26,6 +26,7 @@ def db_path() -> Path:
 
 # --- LLM configuration -------------------------------------------------------
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5").strip()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1").strip()

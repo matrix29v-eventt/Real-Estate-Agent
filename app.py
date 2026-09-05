@@ -8,12 +8,20 @@ from __future__ import annotations
 import streamlit as st
 
 import config
-from services import db, llm_service
-from ui import analysis, dashboard, new_lead
+from services import auth, db, llm_service
+from ui import analysis, buyer, dashboard, login, new_lead, properties
 
 st.set_page_config(page_title=config.APP_TITLE, page_icon="RE", layout="wide")
 
-VIEWS = ["New Lead / Conversation", "Lead Analysis", "Lead Dashboard"]
+BROKER_VIEWS = [
+    "New Lead / Conversation",
+    "Lead Analysis",
+    "Lead Dashboard",
+    "Property Inventory",
+]
+
+# Kept for backwards compatibility with existing tests and bookmarks.
+VIEWS = BROKER_VIEWS
 
 
 @st.cache_resource
@@ -22,7 +30,17 @@ def _bootstrap() -> dict:
     return db.ensure_seeded()
 
 
-def _sidebar() -> None:
+def _account_sidebar(account: auth.Account) -> None:
+    with st.sidebar:
+        st.markdown(f"### {account.role_label}")
+        st.write(account.display_name)
+        if st.button("Sign out", width="stretch"):
+            auth.sign_out(st.session_state)
+            st.rerun()
+        st.markdown("---")
+
+
+def _sidebar(account: auth.Account) -> None:
     with st.sidebar:
         st.markdown("### Agent status")
         status = llm_service.provider_status()
@@ -34,12 +52,12 @@ def _sidebar() -> None:
                     f"Local model. Each turn makes 2 calls, so a turn can take "
                     f"minutes on CPU — the timeout is "
                     f"{config.LLM_TIMEOUT_SECONDS:.0f}s per call. If turns are too "
-                    f"slow, use a smaller model or set ANTHROPIC_API_KEY."
+                    f"slow, use a smaller model or configure Gemini in .env."
                 )
         else:
             st.error("No LLM configured — the agent cannot reason.")
             st.caption(
-                "Copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY` "
+                "Set `GEMINI_API_KEY` and `LLM_PROVIDER=gemini` in `.env` "
                 "(or run a local Ollama model and set `LLM_PROVIDER=ollama`). "
                 "This app never fabricates an analysis when no model is reachable."
             )
@@ -47,6 +65,14 @@ def _sidebar() -> None:
             for entry in status["providers"]:
                 icon = "OK  " if entry["usable"] else "--  "
                 st.caption(f"{icon}**{entry['provider']}** ({entry['model']}): {entry['detail']}")
+
+        if not account.is_broker:
+            st.markdown("---")
+            st.caption(
+                "**Buyer intent** assessment is lead-quality scoring, not identity "
+                "or KYC verification."
+            )
+            return
 
         st.markdown("### Data")
         st.caption(f"Database: `{config.db_path().name}`")
@@ -76,11 +102,18 @@ def _sidebar() -> None:
 def main() -> None:
     _bootstrap()
     st.title(config.APP_TITLE)
-    st.caption(
-        "Which inquiries deserve a broker's immediate attention, which need more "
-        "qualification, and which should be deprioritised?"
-    )
-    _sidebar()
+
+    account = auth.current_account(st.session_state)
+    if account is None:
+        st.caption(
+            "Buyers describe what they are looking for; brokers see which enquiries "
+            "deserve their time."
+        )
+        login.render()
+        return
+
+    _account_sidebar(account)
+    _sidebar(account)
 
     for key, default in (
         ("active_lead_id", None),
@@ -88,27 +121,40 @@ def main() -> None:
         ("agent_error", None),
         ("inquiry_text", ""),
         ("followup_text", ""),
-        ("active_view", VIEWS[0]),
     ):
         st.session_state.setdefault(key, default)
+
+    if not account.is_broker:
+        st.caption(f"Welcome, {account.display_name}. Tell us what you are looking for.")
+        buyer.render(account)
+        return
+
+    st.caption(
+        "Which inquiries deserve a broker's immediate attention, which need more "
+        "qualification, and which should be deprioritised?"
+    )
+    st.session_state.setdefault("active_view", BROKER_VIEWS[0])
 
     # st.tabs resets to the first tab on every rerun, which would strand anyone
     # who navigates here from the dashboard. A keyed selector survives reruns.
     pending = st.session_state.pop("pending_view", None)
-    if pending in VIEWS:
+    if pending in BROKER_VIEWS:
         st.session_state["active_view"] = pending
 
     view = st.radio(
-        "View", VIEWS, key="active_view", horizontal=True, label_visibility="collapsed"
+        "View", BROKER_VIEWS, key="active_view", horizontal=True,
+        label_visibility="collapsed",
     )
     st.divider()
 
-    if view == VIEWS[0]:
+    if view == BROKER_VIEWS[0]:
         new_lead.render()
-    elif view == VIEWS[1]:
+    elif view == BROKER_VIEWS[1]:
         analysis.render()
-    else:
+    elif view == BROKER_VIEWS[2]:
         dashboard.render()
+    else:
+        properties.render()
 
 
 if __name__ == "__main__":

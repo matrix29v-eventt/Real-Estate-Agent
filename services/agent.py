@@ -437,12 +437,16 @@ def run_turn(
     contact: Optional[str] = None,
     provider: Optional[LLMProvider] = None,
     on_stage: Optional[Callable[[str], None]] = None,
+    owner: Optional[str] = None,
 ) -> TurnResult:
     """Run one full agent turn and persist everything it produced.
 
     ``on_stage`` is called with a short human-readable label as each stage
     begins, so a caller can show progress. A turn makes two LLM calls and can
     take minutes on a slow local model; silence looks like a hang.
+
+    ``owner`` tags a newly created lead with the buyer account that submitted
+    it, so the buyer portal can show that buyer only their own leads.
     """
     message = (message or "").strip()
     if not message:
@@ -457,7 +461,8 @@ def run_turn(
         if lead is None:
             raise ValueError(f"Unknown lead_id {lead_id!r}")
     else:
-        lead_id = db.create_lead(name=name, contact=contact, original_inquiry=message)
+        lead_id = db.create_lead(name=name, contact=contact,
+                                 original_inquiry=message, owner=owner)
         lead = db.get_lead(lead_id)
 
     try:

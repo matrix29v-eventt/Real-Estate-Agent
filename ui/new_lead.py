@@ -59,7 +59,8 @@ def _process(message: str, name: str, contact: str, lead_id: str | None) -> None
             status.update(label="No LLM configured", state="error")
             st.session_state["agent_error"] = (
                 f"No LLM is configured, so no analysis was performed.\n\n{exc}\n\n"
-                "Set ANTHROPIC_API_KEY in your .env (or run a local Ollama model) "
+                "Set GEMINI_API_KEY and LLM_PROVIDER=gemini in your .env "
+                "(or configure Anthropic or a local Ollama model) "
                 "and reload. Nothing is fabricated when a model is unavailable."
             )
             return
@@ -92,11 +93,15 @@ def _process(message: str, name: str, contact: str, lead_id: str | None) -> None
     st.session_state["last_turn_seconds"] = elapsed
     st.session_state["active_lead_id"] = result.lead_id
     st.session_state["last_result"] = result
-    st.session_state["inquiry_text"] = ""
-    st.session_state["followup_text"] = ""
+    st.session_state["clear_lead_inputs"] = True
 
 
 def render() -> None:
+    # Clear widget values on the next run, before their widgets are created.
+    if st.session_state.pop("clear_lead_inputs", False):
+        st.session_state["inquiry_text"] = ""
+        st.session_state["followup_text"] = ""
+
     st.subheader("New lead / agent conversation")
     st.caption(
         "Enter a natural-language property inquiry. The agent extracts requirements, "

@@ -104,3 +104,56 @@ def test_next_lead_id_increments(temp_db):
     first = db.next_lead_id()
     db.create_lead(lead_id=first, original_inquiry="x")
     assert db.next_lead_id() != first
+
+
+def test_leads_can_be_scoped_to_an_owner(temp_db):
+    db = temp_db
+    db.create_lead(lead_id="L900", name="A", original_inquiry="x", owner="alice")
+    db.create_lead(lead_id="L901", name="B", original_inquiry="y", owner="bob")
+    db.create_lead(lead_id="L902", name="C", original_inquiry="z")  # unowned
+
+    alice = {lead["lead_id"] for lead in db.list_leads(owner="alice")}
+    assert alice == {"L900"}
+    assert "L901" not in alice and "L902" not in alice
+    # Brokers still see everything, including the seeded leads.
+    assert len(db.list_leads()) == 23
+
+
+def test_dashboard_metrics_can_be_scoped_to_an_owner(temp_db):
+    db = temp_db
+    db.create_lead(lead_id="L900", name="A", original_inquiry="x", owner="alice")
+    db.update_lead("L900", intent_tier="HIGH", status="BROKER_ESCALATION")
+    scoped = db.dashboard_metrics(owner="alice")
+    assert scoped["total_leads"] == 1
+    assert scoped["high_intent"] == 1
+    assert db.dashboard_metrics()["total_leads"] == 21
+
+
+def test_owner_column_is_added_to_an_existing_database(temp_db, monkeypatch, tmp_path):
+    """A database created before ownership existed must migrate, not break."""
+    import sqlite3
+
+    import config
+    from services import db
+
+    legacy = tmp_path / "legacy.db"
+    monkeypatch.setenv("REALESTATE_DB", str(legacy))
+    conn = sqlite3.connect(legacy)
+    conn.executescript(
+        """CREATE TABLE leads (
+               lead_id TEXT PRIMARY KEY, name TEXT, contact TEXT,
+               original_inquiry TEXT, requirements_json TEXT NOT NULL DEFAULT '{}',
+               intent_score INTEGER DEFAULT 0, intent_tier TEXT,
+               status TEXT NOT NULL DEFAULT 'NEW', current_action TEXT,
+               recommended_next_step TEXT, summary_json TEXT,
+               created_at TEXT, updated_at TEXT);
+           INSERT INTO leads (lead_id, name) VALUES ('L500', 'Legacy Buyer');"""
+    )
+    conn.commit()
+    conn.close()
+
+    db.init_db()  # must migrate in place, preserving the row
+    assert config.db_path() == legacy
+    lead = db.get_lead("L500")
+    assert lead is not None and lead["name"] == "Legacy Buyer"
+    assert lead["owner"] is None

@@ -5,9 +5,10 @@ provider and calls one method: ``complete_json(system, user, schema)``, which
 returns a parsed dict validated against a JSON schema by the provider where the
 provider supports it, and by Pydantic afterwards in every case.
 
-Two providers ship:
+Three providers ship:
 
 * ``AnthropicProvider`` - cloud, uses the Messages API with structured outputs.
+* ``GeminiProvider``    - cloud, uses Google's API with structured outputs.
 * ``OllamaProvider``    - optional local fallback for offline demos.
 
 If neither is configured the module raises :class:`LLMUnavailable`. Nothing in
@@ -131,6 +132,82 @@ class AnthropicProvider(LLMProvider):
 # --------------------------------------------------------------------------- #
 # Ollama (optional local fallback)
 # --------------------------------------------------------------------------- #
+class GeminiProvider(LLMProvider):
+    name = "gemini"
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key if api_key is not None else os.getenv("GEMINI_API_KEY", "")
+        self.model = model or config.GEMINI_MODEL
+
+    def available(self) -> tuple[bool, str]:
+        if not self.api_key.strip():
+            return False, "Set GEMINI_API_KEY in .env using a key from Google AI Studio."
+        return True, f"Gemini configured ({self.model}); key is checked on the first call."
+
+    def complete_json(
+        self, system: str, user: str, schema: Dict[str, Any],
+        max_tokens: int = 4000, effort: str = "medium",
+    ) -> Dict[str, Any]:
+        import requests
+
+        usable, detail = self.available()
+        if not usable:
+            raise LLMUnavailable(detail)
+        generation = {
+            "temperature": 0,
+            "maxOutputTokens": max_tokens,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": schema,
+        }
+        if self.model in ("gemini-2.5-flash", "gemini-2.5-flash-lite"):
+            generation["thinkingConfig"] = {"thinkingBudget": 0}
+        elif self.model.startswith("gemini-3"):
+            generation["thinkingConfig"] = {"thinkingLevel": "low"}
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+                headers={"x-goog-api-key": self.api_key},
+                json={
+                    "systemInstruction": {"parts": [{"text": system}]},
+                    "contents": [{"role": "user", "parts": [{"text": user}]}],
+                    "generationConfig": generation,
+                },
+                timeout=config.LLM_TIMEOUT_SECONDS,
+            )
+        except requests.Timeout:
+            raise LLMCallError("Gemini call timed out. Please try again.") from None
+        except requests.RequestException:
+            raise LLMCallError("Could not connect to Gemini. Check your internet connection.") from None
+        if response.status_code == 429:
+            raise LLMCallError(
+                "Gemini free-tier quota or rate limit reached. Wait and retry, "
+                "or check your quota in Google AI Studio."
+            )
+        if response.status_code in (400, 401, 403):
+            raise LLMCallError(
+                "Gemini rejected the request. Check GEMINI_API_KEY, model access "
+                "and request configuration."
+            )
+        if not response.ok:
+            raise LLMCallError(f"Gemini request failed (HTTP {response.status_code}).")
+        try:
+            payload = response.json()
+            candidates = payload.get("candidates", [])
+            if not candidates:
+                raise LLMCallError("Gemini returned no answer; the request may have been blocked.")
+            candidate = candidates[0]
+            if candidate.get("finishReason") != "STOP":
+                raise LLMCallError("Gemini returned an incomplete or blocked answer. Please try again.")
+            text = "".join(
+                part.get("text", "")
+                for part in candidate.get("content", {}).get("parts", [])
+                if not part.get("thought")
+            )
+        except (ValueError, TypeError, AttributeError, KeyError):
+            raise LLMCallError("Gemini returned an invalid response.") from None
+        return parse_json_object(text)
+
+
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
@@ -231,11 +308,13 @@ def parse_json_object(text: str) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 def build_providers() -> list[LLMProvider]:
     choice = os.getenv("LLM_PROVIDER", config.LLM_PROVIDER).strip().lower()
+    if choice == "gemini":
+        return [GeminiProvider()]
     if choice == "anthropic":
         return [AnthropicProvider()]
     if choice == "ollama":
         return [OllamaProvider()]
-    return [AnthropicProvider(), OllamaProvider()]
+    return [GeminiProvider(), AnthropicProvider(), OllamaProvider()]
 
 
 def get_provider() -> LLMProvider:

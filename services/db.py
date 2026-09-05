@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS properties (
 
 CREATE TABLE IF NOT EXISTS leads (
     lead_id               TEXT PRIMARY KEY,
+    owner                 TEXT,
     name                  TEXT,
     contact               TEXT,
     original_inquiry      TEXT,
@@ -105,6 +106,22 @@ def connection() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
+    _migrate()
+
+
+def _migrate() -> None:
+    """Add columns introduced after a database was first created.
+
+    Demo databases live on disk between runs, so a schema change must not force
+    anyone to delete their data. The `owner` index is created here rather than in
+    SCHEMA because on a pre-ownership database the index would be built before
+    the column exists.
+    """
+    with connection() as conn:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(leads)")}
+        if "owner" not in existing:
+            conn.execute("ALTER TABLE leads ADD COLUMN owner TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads (owner)")
 
 
 def reset_db() -> None:
@@ -113,6 +130,7 @@ def reset_db() -> None:
         for table in ("agent_actions", "conversations", "leads", "properties"):
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.executescript(SCHEMA)
+    _migrate()
 
 
 # --------------------------------------------------------------------------- #
@@ -217,17 +235,19 @@ def create_lead(
     requirements: Optional[Dict[str, Any]] = None,
     status: str = LeadStatus.NEW.value,
     created_at: Optional[str] = None,
+    owner: Optional[str] = None,
 ) -> str:
+    """Create a lead. ``owner`` is the buyer account it belongs to, if any."""
     lead_id = lead_id or next_lead_id()
     now = created_at or utc_now()
     with connection() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO leads
-               (lead_id, name, contact, original_inquiry, requirements_json,
+               (lead_id, owner, name, contact, original_inquiry, requirements_json,
                 intent_score, intent_tier, status, current_action,
                 recommended_next_step, summary_json, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, 0, NULL, ?, NULL, NULL, NULL, ?, ?)""",
-            (lead_id, name, contact, original_inquiry,
+               VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, NULL, NULL, ?, ?)""",
+            (lead_id, owner, name, contact, original_inquiry,
              json.dumps(requirements or {}), status, now, now),
         )
     return lead_id
@@ -236,6 +256,7 @@ def create_lead(
 def update_lead(lead_id: str, **fields: Any) -> None:
     """Update whitelisted lead columns. ``requirements``/``summary`` may be dicts."""
     mapping = {
+        "owner": "owner",
         "name": "name",
         "contact": "contact",
         "original_inquiry": "original_inquiry",
@@ -270,9 +291,19 @@ def get_lead(lead_id: str) -> Optional[Dict[str, Any]]:
     return _lead_from_row(row) if row else None
 
 
-def list_leads() -> List[Dict[str, Any]]:
+def list_leads(owner: Optional[str] = None) -> List[Dict[str, Any]]:
+    """All leads, or only those belonging to ``owner``.
+
+    Passing an owner is how the buyer portal is kept to that buyer's own leads.
+    """
+    sql = "SELECT * FROM leads"
+    params: tuple = ()
+    if owner is not None:
+        sql += " WHERE owner = ?"
+        params = (owner,)
+    sql += " ORDER BY updated_at DESC"
     with connection() as conn:
-        rows = conn.execute("SELECT * FROM leads ORDER BY updated_at DESC").fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return [_lead_from_row(r) for r in rows]
 
 
@@ -387,8 +418,8 @@ def get_actions(lead_id: Optional[str] = None) -> List[Dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # Dashboard aggregates
 # --------------------------------------------------------------------------- #
-def dashboard_metrics() -> Dict[str, int]:
-    leads = list_leads()
+def dashboard_metrics(owner: Optional[str] = None) -> Dict[str, int]:
+    leads = list_leads(owner)
     tiers = [(lead.get("intent_tier") or "") for lead in leads]
     statuses = [(lead.get("status") or "") for lead in leads]
     return {
@@ -400,7 +431,10 @@ def dashboard_metrics() -> Dict[str, int]:
         "broker_escalations": statuses.count(LeadStatus.BROKER_ESCALATION.value),
         "low_priority": statuses.count(LeadStatus.LOW_PRIORITY.value),
         "nurturing": statuses.count(LeadStatus.NURTURING.value),
-        "decisions_logged": count_rows("agent_actions"),
+        "decisions_logged": (
+            count_rows("agent_actions") if owner is None
+            else sum(len(get_actions(lead["lead_id"])) for lead in leads)
+        ),
     }
 
 
