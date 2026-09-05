@@ -79,6 +79,7 @@ def render_conversation_tab():
             {"sender": "buyer", "message": inquiry, "type": "inquiry"}
         ]
         st.session_state.lead_id = result["lead_data"]["lead_id"]
+        st.session_state.follow_up_result = result
         st.rerun()
 
     if "current_lead" in st.session_state and st.session_state.current_lead:
