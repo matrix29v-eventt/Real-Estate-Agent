@@ -149,7 +149,7 @@ flowchart TD
 | `data/property_seed.py` | 53 synthetic Trivandrum properties |
 | `data/lead_seed.py` | 20 historical leads with conversations and decisions |
 | `scripts/run_scenarios.py` | Manual end-to-end demo harness |
-| `tests/` | 63 pytest tests, no network access (incl. AppTest render smoke tests) |
+| `tests/` | 66 pytest tests, no network access (incl. AppTest render smoke tests) |
 
 ---
 
@@ -298,7 +298,7 @@ Or paste them in the UI — the **Load a demo scenario** expander prefills each.
 python -m pytest -q
 ```
 
-63 tests, no network access — the agent pipeline is exercised with a scripted
+66 tests, no network access — the agent pipeline is exercised with a scripted
 provider so results are deterministic. Coverage:
 
 - database initialisation, seeding idempotency and dataset gap invariants
@@ -309,6 +309,7 @@ provider so results are deterministic. Coverage:
 - lead persistence, status transitions and agent-action audit rows
 - draft rendering, including the "nothing is sent" disclaimer
 - rollback of a lead created by a turn that failed before reaching a decision
+- per-stage progress reporting, and a no-criteria "only browsing" inquiry
 - Streamlit render smoke tests (`streamlit.testing.v1.AppTest`) covering all
   three views, every lead archetype, and the missing-LLM warning path
 
@@ -324,6 +325,11 @@ provider so results are deterministic. Coverage:
 - Decision quality tracks model quality. The prompts are written for
   `claude-opus-5`; small local models will follow the reasoning instructions
   less reliably.
+- **A turn makes two LLM calls and is synchronous.** On a slow local model that
+  can be minutes; the UI reports each stage and the elapsed time, but there is no
+  cancel button and no streaming. Measured on one CPU machine: `llama3.2:3b`
+  ~89 s per turn, `gemma4` many minutes (unusable). Use Anthropic for a
+  responsive demo.
 - No authentication, multi-user support or concurrency control — SQLite with a
   single Streamlit process.
 - The agent's own intent score is not calibrated against outcome data; it is a

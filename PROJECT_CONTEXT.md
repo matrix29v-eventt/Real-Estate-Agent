@@ -4,7 +4,7 @@
 > from the repository alone, with no additional explanation from the user.
 > Update after every meaningful milestone.
 
-**Last updated:** phase 6 — application complete, pushed, 63 tests green, two live-use bugs found and fixed.
+**Last updated:** phase 7 — application complete, pushed, 66 tests green, three live-use issues found and fixed.
 
 ---
 
@@ -78,7 +78,7 @@ Python 3.11 · Streamlit 1.63 · SQLite (stdlib `sqlite3`) · Pandas · Pydantic
 │   └── realestate.db          # generated, git-ignored
 ├── scripts/
 │   └── run_scenarios.py       # manual end-to-end demo harness (needs a real model)
-└── tests/                     # 63 pytest tests, no network
+└── tests/                     # 66 pytest tests, no network
     ├── conftest.py            # temp_db fixture + ScriptedProvider
     ├── test_db.py  test_matcher.py  test_signals.py
     ├── test_schemas.py  test_agent.py
@@ -209,7 +209,7 @@ Invalid output → one retry with the validation error fed back → then
 - [x] Decision audit trail with input/output snapshots
 - [x] Streamlit UI — 3 tabs (New Lead, Lead Analysis, Dashboard)
 - [x] In-app draft rendering; nothing is sent externally
-- [x] 63 pytest tests, all passing, no network (incl. AppTest render smoke tests)
+- [x] 66 pytest tests, all passing, no network (incl. AppTest render smoke tests)
 - [x] `scripts/run_scenarios.py` demo harness
 - [x] README.md + CLAUDE.md + this file
 - [x] All three views verified rendering (AppTest + browser)
@@ -224,18 +224,39 @@ Invalid output → one retry with the validation error fed back → then
 
 - `streamlit run app.py` starts, seeds the DB and renders all three views
   (verified both in a browser and headlessly via `AppTest`).
-- `python -m pytest -q` → **63 passed**.
+- `python -m pytest -q` → **66 passed**.
 - `scripts/run_scenarios.py` ran all five demo scenarios end to end against a
   local Ollama model with **0 pipeline failures** — extraction, context merging,
   matching, evidence, decision, persistence and status transitions all worked.
 
-**Two real bugs were found by using the app and are fixed:**
+**Three real issues were found by using the app and are fixed:**
 
 1. `st.tabs` reset to the first tab on every rerun, so the dashboard's
    "Open in Lead Analysis" button never landed. Replaced with a keyed view
    selector.
 2. A turn that failed before reaching a decision left an orphan `NEW` lead in the
    dashboard. `run_turn` now rolls back a lead it created.
+3. A turn showed one opaque spinner for its whole duration. With a slow local
+   model that is minutes of silence and reads as a hang (reported from live use:
+   "nothing happening after that"). `run_turn` now takes an `on_stage` callback
+   and the form renders `st.status` with the live stage and elapsed seconds.
+
+### Measured local-model performance (this machine, CPU)
+
+| Model | Trivial call | Full turn (2 LLM calls) |
+|---|---|---|
+| `llama3.2:3b` | seconds | **~89 s** (25 s extract + 64 s reason) |
+| `gemma4` | 200 s+ under contention | many minutes; timed out at 600 s twice |
+
+`gemma4` measured ~8 tokens/sec. It is **not usable** for a two-call-per-turn
+agent on this hardware. `llama3.2:3b` is fast enough to demo the plumbing but
+follows the reasoning instructions poorly.
+
+Full five-scenario `gemma4` run (completed, ~40 min): scenario 1
+`SHOW_MATCHING_PROPERTIES` HIGH 95, scenario 2 `ASK_MORE_INFO`
+NEEDS_CLARIFICATION 20, scenario 3 `RESET_EXPECTATIONS` LOW 30 (correct),
+scenario 5 turn 1 `ASK_MORE_INFO` — scenarios 4 and 5-turn-2 hit the 600 s
+timeout. The reasoning is sound with a capable model; the failures are speed.
 
 **Caveat on decision quality:** the only models available locally during
 development were small (`llama3.2:3b`, `gemma4`). `llama3.2:3b` follows the
@@ -246,7 +267,7 @@ This is a model-capability ceiling, not a code defect. The prompts are written
 for `claude-opus-5`; set `ANTHROPIC_API_KEY` for the intended behaviour.
 
 **Fresh-clone verified:** `git clone -b claude/lead-qualification-agent ...` into
-a clean directory contains no `.env` and passes all 63 tests.
+a clean directory contains no `.env` and passes all 66 tests.
 
 **Note on the local `.env`:** a `.env` exists in the working tree (created by the
 user) pointing at `ollama/gemma4`. It is git-ignored and untracked. Because
@@ -360,9 +381,22 @@ Commits on this branch:
 
 ---
 
+## Operational note
+
+Several stale Streamlit servers were left running during development and a
+restart silently failed with "Port 8518 is not available", so fixes did not
+reach the browser for a while. All were stopped; **one clean server now runs on
+port 8520**. If the UI looks out of date, check for stale processes:
+`Get-Process streamlit,python` / `Get-NetTCPConnection -State Listen`.
+
+---
+
 ## Last Work Performed
 
-Replaced `st.tabs` with a keyed view selector so navigation survives reruns;
+Added per-stage progress reporting (`on_stage` callback plus `st.status` with
+elapsed seconds) after a live report that the app looked frozen; measured local
+model speeds and added a sidebar warning for local providers;
+replaced `st.tabs` with a keyed view selector so navigation survives reruns;
 made `run_turn` roll back a lead it created when a turn fails; added
 `tests/test_ui_smoke.py` (10 `AppTest` render tests covering all three views,
 every lead archetype, dashboard metrics and the missing-LLM path); added an
