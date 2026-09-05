@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+import config
 from services import agent, db
 from services.llm_service import LLMCallError, LLMUnavailable
 from ui import components
@@ -50,7 +51,15 @@ def _process(message: str, name: str, contact: str, lead_id: str | None) -> None
             )
             return
         except LLMCallError as exc:
-            st.session_state["agent_error"] = f"The model call failed: {exc}"
+            hint = ""
+            if "timed out" in str(exc).lower():
+                hint = (
+                    "\n\nThe model did not answer within "
+                    f"{config.LLM_TIMEOUT_SECONDS:.0f}s. Local models on CPU are often "
+                    "slower than that — raise `LLM_TIMEOUT_SECONDS` in your .env, "
+                    "choose a smaller local model, or use Anthropic."
+                )
+            st.session_state["agent_error"] = f"The model call failed: {exc}{hint}"
             return
         except ValueError as exc:
             st.session_state["agent_error"] = str(exc)

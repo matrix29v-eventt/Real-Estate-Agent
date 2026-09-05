@@ -149,7 +149,7 @@ flowchart TD
 | `data/property_seed.py` | 53 synthetic Trivandrum properties |
 | `data/lead_seed.py` | 20 historical leads with conversations and decisions |
 | `scripts/run_scenarios.py` | Manual end-to-end demo harness |
-| `tests/` | 51 pytest tests, no network access |
+| `tests/` | 63 pytest tests, no network access |
 
 ---
 
@@ -298,7 +298,7 @@ Or paste them in the UI — the **Load a demo scenario** expander prefills each.
 python -m pytest -q
 ```
 
-51 tests, no network access — the agent pipeline is exercised with a scripted
+63 tests, no network access — the agent pipeline is exercised with a scripted
 provider so results are deterministic. Coverage:
 
 - database initialisation, seeding idempotency and dataset gap invariants
@@ -308,6 +308,9 @@ provider so results are deterministic. Coverage:
 - context merging across conversation turns
 - lead persistence, status transitions and agent-action audit rows
 - draft rendering, including the "nothing is sent" disclaimer
+- rollback of a lead created by a turn that failed before reaching a decision
+- Streamlit render smoke tests (`streamlit.testing.v1.AppTest`) covering all
+  three views, every lead archetype, and the missing-LLM warning path
 
 ---
 

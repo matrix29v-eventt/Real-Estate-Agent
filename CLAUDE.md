@@ -56,6 +56,11 @@ python scripts/run_scenarios.py      # manual end-to-end demo, needs a real mode
 - Type hints on public functions; `from __future__ import annotations` at the top.
 - Money is whole rupees internally; format for display with `models.schemas.money`.
 - Tests must not hit the network — use `ScriptedProvider` from `tests/conftest.py`.
+- Views are render-tested with `streamlit.testing.v1.AppTest`
+  (`tests/test_ui_smoke.py`); add a case there when you add a view.
+- Navigation uses a keyed `active_view` selector, not `st.tabs`, because
+  `st.tabs` resets to the first tab on every rerun. Switch views by setting
+  `st.session_state["pending_view"]` and calling `st.rerun()`.
 - Prefer plain ASCII in source strings (the UI runs in a Windows terminal too).
 - Keep the UI clean and functional; do not add heavy custom CSS.
 
