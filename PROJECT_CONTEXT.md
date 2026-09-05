@@ -203,7 +203,7 @@ Invalid output → one retry with the validation error fed back → then
 - [x] `scripts/run_scenarios.py` demo harness
 - [x] README.md + CLAUDE.md + this file
 - [ ] Final verification pass with a capable model (see Pending Work)
-- [ ] Push to GitHub
+- [x] Pushed to GitHub (branch `claude/lead-qualification-agent`, commit `d6ee343`)
 
 ---
 
@@ -232,7 +232,8 @@ the intended behaviour.
 
 1. Run `python scripts/run_scenarios.py` with `ANTHROPIC_API_KEY` set and confirm
    the five scenarios produce the expected actions. Record results here.
-2. Push to `origin main` (see Git Status).
+2. Decide with the user how `claude/lead-qualification-agent` relates to the
+   parallel implementation already on `main` (see Git Status). Do not force-push.
 3. Optional polish: a small "before → after" delta banner on the Lead Analysis
    tab making the scenario-5 decision change even more obvious.
 
@@ -283,16 +284,44 @@ which returns pre-scripted JSON payloads in order.
 
 ## Git Status
 
-- Branch: `main`
+- Branch: **`claude/lead-qualification-agent`** (renamed from `main` — see below)
 - Remote: `origin` → https://github.com/matrix29v-eventt/Real-Estate-Agent.git
-  (repository was empty; `gh auth status` reports WRITE permission)
-- Commits so far:
-  1. `b3c9bba` chore: initialize real estate agent project scaffolding
-  2. `b6f11da` feat: add synthetic property and lead datasets with SQLite persistence
-  3. `6cb5288` feat: implement matching, evidence signals, LLM abstraction and agent pipeline
-  4. `61e7ad4` feat: build Streamlit lead qualification UI with three views
-- **Not yet pushed.** Documentation and the scenario harness are uncommitted at
-  the time of writing.
+- **Pushed successfully.** Final pushed commit: **`d6ee343`**
+  ("docs: add README, CLAUDE.md, handoff context and scenario harness")
+- Working tree clean at time of push.
+
+### IMPORTANT — a parallel implementation exists on `main`
+
+The repository was empty when this work started. Partway through, the repo owner
+(`matrix29v-eventt`) pushed a **separate, complete implementation of the same
+problem** to `main`:
+
+```
+7ae9174 2026-09-05 10:54 fix: parse JSON fields in database query results
+16d3b8d 2026-09-05 10:39 docs: update PROJECT_CONTEXT.md with final completion status
+5678dcf 2026-09-05 10:39 feat: complete real estate lead qualification agent
+```
+
+Their layout differs (`services/database.py`, `services/property_matcher.py`,
+`data/properties.py`, `data/leads.py`, `tests/test_core.py`).
+
+The two histories are **unrelated** (this branch started from a fresh `git init`),
+so they cannot be fast-forwarded into each other. This work was therefore pushed
+to its own branch and `main` was left untouched. **Do not force-push over `main`.**
+
+The user must decide which implementation is the submission:
+
+- keep both and open a PR from `claude/lead-qualification-agent`, or
+- adopt this branch as `main`, or
+- cherry-pick specific pieces across.
+
+Commits on this branch:
+
+1. `b3c9bba` chore: initialize real estate agent project scaffolding
+2. `b6f11da` feat: add synthetic property and lead datasets with SQLite persistence
+3. `6cb5288` feat: implement matching, evidence signals, LLM abstraction and agent pipeline
+4. `61e7ad4` feat: build Streamlit lead qualification UI with three views
+5. `d6ee343` docs: add README, CLAUDE.md, handoff context and scenario harness
 
 ---
 
@@ -309,10 +338,9 @@ computed with the real matching engine.
 
 1. `cd "F:/Real Estate - Cymonic"`
 2. `python -m pytest -q` — expect 51 passed.
-3. `git add -A && git commit` the docs, scenario harness and prompt changes.
-4. `git push -u origin main`. If auth fails, record the exact error here plus the
-   branch and commit hash, and give the user the exact push command. **Do not
-   discard local commits and do not claim a push succeeded if it did not.**
-5. With `ANTHROPIC_API_KEY` set, run `python scripts/run_scenarios.py` and record
+3. With `ANTHROPIC_API_KEY` set, run `python scripts/run_scenarios.py` and record
    the five decisions in "Current Status".
-6. Update this file and commit again.
+4. Ask the user how to reconcile this branch with `main` before any merge or
+   force-push. Both implementations are complete; nothing should be deleted
+   without the user's explicit decision.
+5. Update this file and commit again.
