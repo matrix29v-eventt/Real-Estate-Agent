@@ -315,7 +315,7 @@ class AgentDecision(BaseModel):
             return [v] if v.strip() else []
         return v
 
-    @field_validator("follow_up_question", "summary_headline", mode="before")
+    @field_validator("follow_up_question", mode="before")
     @classmethod
     def _blank_to_none(cls, v: Any) -> Any:
         if isinstance(v, str) and not v.strip():
@@ -325,7 +325,7 @@ class AgentDecision(BaseModel):
     @field_validator("summary_headline", mode="before")
     @classmethod
     def _headline_default(cls, v: Any) -> Any:
-        return v or ""
+        return v if isinstance(v, str) else ""
 
     @property
     def status(self) -> str:

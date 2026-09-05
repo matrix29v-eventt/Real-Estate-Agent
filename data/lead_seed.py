@@ -371,16 +371,56 @@ SEED_LEADS: List[Dict[str, Any]] = [
 ]
 
 
+def _seed_summary(lead: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the same structured summary shape a live agent run produces.
+
+    Top matches are computed with the real matching engine against the seeded
+    inventory, so historical leads are consistent with anything created later.
+    """
+    from models.schemas import LeadRequirements
+    from services import matcher
+
+    req = LeadRequirements(**requirements)
+    matches = matcher.match_properties(req, db.list_properties())
+    locations = ", ".join(req.locations) or "unspecified area"
+    property_label = " ".join(
+        part for part in [f"{req.bhk} BHK" if req.bhk else "", req.property_type or ""] if part
+    ) or "Not specified"
+    return {
+        "lead_id": lead["lead_id"],
+        "name": lead["name"],
+        "contact": lead["contact"],
+        "budget": req.budget_label(),
+        "locations": req.locations,
+        "property": property_label,
+        "timeline": req.timeline_label(),
+        "financing": req.financing_method
+        or req.financing_readiness.value.replace("_", " ").title(),
+        "intent": lead["tier"],
+        "intent_score": lead["score"],
+        "top_matches": [m.property_id for m in matches[:3]],
+        "decision": lead["action"],
+        "reason": lead["reasoning"][0],
+        "reasoning": lead["reasoning"],
+        "recommended_next_step": lead["next_step"],
+        "headline": f"{lead['tier'].replace('_', ' ').title()} intent - "
+                    f"{property_label} in {locations}",
+        "generated_at": _ts(lead["days_ago"]),
+        "seeded": True,
+    }
+
+
 def seed_leads() -> int:
     """Insert the historical leads, their conversations and one archived decision each."""
     for lead in SEED_LEADS:
         created = _ts(lead["days_ago"])
+        requirements = dict(lead["reqs"], original_inquiry=lead["inquiry"])
         db.create_lead(
             lead_id=lead["lead_id"],
             name=lead["name"],
             contact=lead["contact"],
             original_inquiry=lead["inquiry"],
-            requirements=dict(lead["reqs"], original_inquiry=lead["inquiry"]),
+            requirements=requirements,
             status=lead["status"],
             created_at=created,
         )
@@ -391,10 +431,7 @@ def seed_leads() -> int:
             status=lead["status"],
             current_action=lead["action"],
             recommended_next_step=lead["next_step"],
-            summary={
-                "reasoning": lead["reasoning"],
-                "seeded": True,
-            },
+            summary=_seed_summary(lead, requirements),
         )
         for offset, (role, message) in enumerate(lead["turns"]):
             db.add_turn(lead["lead_id"], role, message,
