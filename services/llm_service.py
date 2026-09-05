@@ -173,7 +173,13 @@ class OllamaProvider(LLMProvider):
                     "model": self.model,
                     "stream": False,
                     "format": schema,  # Ollama accepts a JSON schema here
-                    "options": {"temperature": 0, "num_predict": max_tokens},
+                    # num_ctx must be raised explicitly: Ollama's small default
+                    # context silently truncates these prompts mid-answer.
+                    "options": {
+                        "temperature": 0,
+                        "num_predict": max_tokens,
+                        "num_ctx": 16384,
+                    },
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},

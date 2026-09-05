@@ -194,6 +194,22 @@ Available actions:
   honest next step is to show them the real price floor and offer alternatives.
 - LOW_PRIORITY_OR_DISCARD - no purchase signal worth pursuing.
 
+Mistakes to avoid:
+- Do not ask for information the buyer has already given. Check the requirements
+  and the transcript first.
+- ASK_MORE_INFO is for a genuine gap. If `missing_critical_fields` is empty, more
+  questions delay someone who has already told you what matters; pick the action
+  that moves the deal instead.
+- More questions cannot fix arithmetic. When `budget_realism.verdict` is
+  UNREALISTIC and nothing viable exists, the honest action is
+  RESET_EXPECTATIONS, not another round of clarification.
+- When `inventory_stats.matching_is_meaningful` is false, ignore the match
+  percentages entirely - they were computed against requirements too loose to
+  mean anything.
+- Do not escalate on completeness alone. A fully described buyer with no urgency
+  and no financing movement is a NURTURE_LEAD, and the timeline must appear in
+  your reasoning when it drives the call.
+
 Also produce:
 - `intent_score` 0-100: your own judgement of buyer intent. Start from the
   heuristic score but move it when the context justifies it, and explain any
@@ -300,6 +316,40 @@ def _format_history(history: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def situation_brief(
+    req: LeadRequirements, evidence: EvidencePack, matches: List[PropertyMatch]
+) -> str:
+    """A plain-English digest of the decision-relevant facts.
+
+    The full JSON follows it, but models weigh a short brief far more reliably
+    than a nested structure, and a human reading the audit trail can check the
+    agent was told the truth.
+    """
+    lines = [
+        f"- Budget: {req.budget_label()}",
+        f"- Preferred areas: {', '.join(req.locations) or 'none stated'}",
+        f"- Requirement: {req.bhk or 'unspecified'} BHK {req.property_type or 'property'}",
+        f"- Timeline: {req.timeline_label()}",
+        f"- Financing: {req.financing_readiness.value.replace('_', ' ').lower()}",
+        f"- Missing critical information: "
+        f"{', '.join(evidence.missing_critical_fields) or 'none - the buyer has covered all three'}",
+        f"- Budget realism: {evidence.budget_realism.get('verdict')}"
+        + (f" ({evidence.budget_realism.get('reason')})"
+           if evidence.budget_realism.get("reason") else ""),
+        f"- Strong inventory matches: {evidence.strong_match_count} "
+        f"(top match {evidence.top_match_pct}%)",
+        f"- Heuristic rubric score: {evidence.heuristic_score}/100 (evidence only)",
+        f"- Conversation turns so far: {evidence.conversation_turns}",
+    ]
+    if not evidence.inventory_stats.get("matching_is_meaningful", True):
+        lines.append("- WARNING: requirements are too loose for match percentages to mean anything.")
+    if evidence.contradictions:
+        lines.append("- Contradictions: " + "; ".join(evidence.contradictions))
+    if not matches:
+        lines.append("- No property in the inventory currently fits these requirements.")
+    return "\n".join(lines)
+
+
 def reason_next_action(
     req: LeadRequirements,
     evidence: EvidencePack,
@@ -308,6 +358,7 @@ def reason_next_action(
     provider: LLMProvider,
 ) -> AgentDecision:
     user = (
+        f"SITUATION BRIEF:\n{situation_brief(req, evidence, matches)}\n\n"
         f"BUYER REQUIREMENTS (merged):\n{req.model_dump_json(indent=2)}\n\n"
         f"DETERMINISTIC EVIDENCE:\n{evidence.model_dump_json(indent=2)}\n\n"
         f"TOP INVENTORY MATCHES:\n{json.dumps(_compact_matches(matches), indent=2)}\n\n"
