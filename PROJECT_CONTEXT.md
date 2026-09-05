@@ -4,7 +4,7 @@
 > from the repository alone, with no additional explanation from the user.
 > Update after every meaningful milestone.
 
-**Last updated:** phase 5 — application complete, documentation written, tests green.
+**Last updated:** phase 6 — application complete, pushed, 63 tests green, two live-use bugs found and fixed.
 
 ---
 
@@ -78,10 +78,11 @@ Python 3.11 · Streamlit 1.63 · SQLite (stdlib `sqlite3`) · Pandas · Pydantic
 │   └── realestate.db          # generated, git-ignored
 ├── scripts/
 │   └── run_scenarios.py       # manual end-to-end demo harness (needs a real model)
-└── tests/                     # 51 pytest tests, no network
+└── tests/                     # 63 pytest tests, no network
     ├── conftest.py            # temp_db fixture + ScriptedProvider
     ├── test_db.py  test_matcher.py  test_signals.py
     ├── test_schemas.py  test_agent.py
+    └── test_ui_smoke.py       # streamlit.testing.v1.AppTest render tests
 ```
 
 ---
@@ -180,6 +181,15 @@ Invalid output → one retry with the validation error fed back → then
   answers mid-JSON.
 - **Situation brief before the JSON.** A short plain-English digest of the
   decision-relevant facts materially improves adherence and is auditable.
+- **Keyed `active_view` selector instead of `st.tabs`.** `st.tabs` resets to the
+  first tab on every rerun, so "Open in Lead Analysis" never landed. Switch views
+  by setting `st.session_state["pending_view"]` then `st.rerun()`; `app.py`
+  applies it before the widget renders (a widget key cannot be written after the
+  widget exists in the same run).
+- **`run_turn` rolls back a lead it created if the turn fails.** Observed twice
+  in live use against a slow local model: a timeout left a half-formed `NEW` lead
+  with a conversation turn and no decision sitting in the dashboard. Existing
+  leads are never rolled back.
 
 ---
 
@@ -199,32 +209,46 @@ Invalid output → one retry with the validation error fed back → then
 - [x] Decision audit trail with input/output snapshots
 - [x] Streamlit UI — 3 tabs (New Lead, Lead Analysis, Dashboard)
 - [x] In-app draft rendering; nothing is sent externally
-- [x] 51 pytest tests, all passing, no network
+- [x] 63 pytest tests, all passing, no network (incl. AppTest render smoke tests)
 - [x] `scripts/run_scenarios.py` demo harness
 - [x] README.md + CLAUDE.md + this file
-- [ ] Final verification pass with a capable model (see Pending Work)
+- [x] All three views verified rendering (AppTest + browser)
+- [ ] Final verification pass with `claude-opus-5` (see Pending Work)
 - [x] Pushed to GitHub (branch `claude/lead-qualification-agent`, commit `d6ee343`)
 
 ---
 
 ## Current Status
 
-**The application is complete and runs.**
+**The application is complete, runs, and is pushed.**
 
-- `streamlit run app.py` starts, seeds the DB, renders all three tabs
-  (verified in a browser at `localhost:8517`).
-- `python -m pytest -q` → **51 passed**.
+- `streamlit run app.py` starts, seeds the DB and renders all three views
+  (verified both in a browser and headlessly via `AppTest`).
+- `python -m pytest -q` → **63 passed**.
 - `scripts/run_scenarios.py` ran all five demo scenarios end to end against a
-  local Ollama model with **0 pipeline failures** — extraction, matching,
-  evidence, decision, persistence and status transitions all worked.
+  local Ollama model with **0 pipeline failures** — extraction, context merging,
+  matching, evidence, decision, persistence and status transitions all worked.
+
+**Two real bugs were found by using the app and are fixed:**
+
+1. `st.tabs` reset to the first tab on every rerun, so the dashboard's
+   "Open in Lead Analysis" button never landed. Replaced with a keyed view
+   selector.
+2. A turn that failed before reaching a decision left an orphan `NEW` lead in the
+   dashboard. `run_turn` now rolls back a lead it created.
 
 **Caveat on decision quality:** the only models available locally during
 development were small (`llama3.2:3b`, `gemma4`). `llama3.2:3b` follows the
 reasoning instructions poorly and tends to pick `ASK_MORE_INFO` for everything;
-`gemma4` produced correct decisions (e.g. scenario 1 → `ESCALATE_TO_BROKER`,
-HIGH 95/100) but is slow on CPU. This is a model-capability ceiling, not a code
-defect. The prompts are written for `claude-opus-5`; set `ANTHROPIC_API_KEY` for
-the intended behaviour.
+`gemma4` produces sensible decisions (scenario 1 → HIGH 95/100, scenario 2 →
+`ASK_MORE_INFO` / NEEDS_CLARIFICATION 20/100) but takes minutes per call on CPU.
+This is a model-capability ceiling, not a code defect. The prompts are written
+for `claude-opus-5`; set `ANTHROPIC_API_KEY` for the intended behaviour.
+
+**Note on the local `.env`:** a `.env` exists in the working tree (created by the
+user) pointing at `ollama/gemma4`. It is git-ignored and untracked. Because
+gemma4 is slow on CPU, raise `LLM_TIMEOUT_SECONDS` well above the 90s default or
+switch to Anthropic — the default timeout is what produced the orphan leads.
 
 ---
 
@@ -286,8 +310,9 @@ which returns pre-scripted JSON payloads in order.
 
 - Branch: **`claude/lead-qualification-agent`** (renamed from `main` — see below)
 - Remote: `origin` → https://github.com/matrix29v-eventt/Real-Estate-Agent.git
-- **Pushed successfully.** Final pushed commit: **`d6ee343`**
-  ("docs: add README, CLAUDE.md, handoff context and scenario harness")
+- **Pushed successfully** to `origin/claude/lead-qualification-agent`.
+- Latest pushed commit at time of writing: **`843457c`**
+  ("test: add Streamlit render smoke tests and a timeout hint").
 - Working tree clean at time of push.
 
 ### IMPORTANT — a parallel implementation exists on `main`
@@ -322,15 +347,19 @@ Commits on this branch:
 3. `6cb5288` feat: implement matching, evidence signals, LLM abstraction and agent pipeline
 4. `61e7ad4` feat: build Streamlit lead qualification UI with three views
 5. `d6ee343` docs: add README, CLAUDE.md, handoff context and scenario harness
+6. `32cac89` docs: record push status and the parallel implementation on main
+7. `d050a4e` fix: keep view selection across reruns and roll back orphan leads
+8. `843457c` test: add Streamlit render smoke tests and a timeout hint
 
 ---
 
 ## Last Work Performed
 
-Wrote `README.md`, `CLAUDE.md` and `scripts/run_scenarios.py`; added the
-situation brief and the "mistakes to avoid" block to the reasoning prompt;
-raised Ollama's `num_ctx`; made seeded leads carry a full structured summary
-computed with the real matching engine.
+Replaced `st.tabs` with a keyed view selector so navigation survives reruns;
+made `run_turn` roll back a lead it created when a turn fails; added
+`tests/test_ui_smoke.py` (10 `AppTest` render tests covering all three views,
+every lead archetype, dashboard metrics and the missing-LLM path); added an
+actionable timeout hint to the inquiry form; refreshed README and CLAUDE.md.
 
 ---
 

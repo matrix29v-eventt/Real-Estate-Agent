@@ -136,7 +136,7 @@ flowchart TD
 
 | Path | Responsibility |
 |---|---|
-| `app.py` | Streamlit entry point, three tabs, LLM status sidebar |
+| `app.py` | Streamlit entry point, view navigation, LLM status sidebar |
 | `config.py` | Paths, env loading, market constants, area adjacency |
 | `models/schemas.py` | Pydantic contracts, enums, rupee parsing, status mapping |
 | `services/db.py` | SQLite schema, CRUD, audit trail, dashboard aggregates |
@@ -145,11 +145,11 @@ flowchart TD
 | `services/llm_service.py` | Provider abstraction, structured JSON, recovery |
 | `services/agent.py` | The two-stage pipeline and persistence |
 | `services/drafts.py` | Draft rendering (never sends) |
-| `ui/` | View modules and shared render helpers |
+| `ui/` | The three view modules and shared render helpers |
 | `data/property_seed.py` | 53 synthetic Trivandrum properties |
 | `data/lead_seed.py` | 20 historical leads with conversations and decisions |
 | `scripts/run_scenarios.py` | Manual end-to-end demo harness |
-| `tests/` | 63 pytest tests, no network access |
+| `tests/` | 63 pytest tests, no network access (incl. AppTest render smoke tests) |
 
 ---
 
