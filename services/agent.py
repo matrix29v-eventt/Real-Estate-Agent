@@ -127,7 +127,9 @@ def parse_inquiry(inquiry_text: str) -> Dict[str, Any]:
                     locations.append(location_map[loc_key])
 
     if "trivandrum" in inquiry_lower and not locations:
-        pass
+        for loc_key, loc_val in list(location_map.items()):
+            if loc_val and loc_val not in locations and loc_key != "trivandrum":
+                locations.append(loc_val)
 
     if locations:
         requirements["locations"] = list(set(locations))
@@ -330,6 +332,41 @@ def analyze_lead(
 
     if intent_tier == "NEEDS_CLARIFICATION":
         intent_tier = "MEDIUM"
+
+    if matches and len(matches) > 0 and matches[0]["match_score"] < 30:
+        decision = "LOW_PRIORITY_OR_DISCARD"
+        intent_tier = "LOW"
+        intent_score = min(intent_score, 20)
+        reasoning = [f"Best match score is only {matches[0]['match_score']}% — unrealistic budget or requirements"]
+        missing_information = ["Budget is too low for requested location/BHK"]
+        risks = ["No viable properties found"]
+        follow_up_question = None
+        recommended_next_step = "Deprioritize or discard lead"
+
+    if matches and len(matches) > 0:
+        min_prop_price = matches[0]["property"]["price"]
+        budget_max = requirements.get("budget_max")
+        if budget_max and budget_max < min_prop_price * 0.5:
+            decision = "LOW_PRIORITY_OR_DISCARD"
+            intent_tier = "LOW"
+            intent_score = min(intent_score, 20)
+            reasoning = [f"Budget (₹{budget_max/100000:.1f}L) is far below market prices (lowest match: ₹{min_prop_price/100000:.1f}L) for requested location/BHK"]
+            missing_information = ["Budget is unrealistic for requested location"]
+            risks = ["No viable properties found"]
+            follow_up_question = "Would you be flexible on your budget or location?"
+            recommended_next_step = "Deprioritize or discard lead"
+
+    if decision == "NURTURE_LEAD" or (
+        requirements.get("timeline_months") and requirements["timeline_months"] > 12
+    ):
+        decision = "NURTURE_LEAD"
+        intent_tier = "LOW"
+        intent_score = min(intent_score, 35)
+        reasoning = [
+            f"Purchase timeline is {requirements['timeline_months']} months — long-term buyer, low urgency"
+        ]
+        if follow_up_question is None:
+            follow_up_question = None
 
     status_map = {
         "ESCALATE_TO_BROKER": "BROKER_ESCALATION",

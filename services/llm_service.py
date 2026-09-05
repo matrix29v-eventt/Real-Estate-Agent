@@ -244,9 +244,13 @@ def rule_based_reasoning(lead_context, matches, missing_fields):
         tier = "LOW"
         decision = "LOW_PRIORITY_OR_DISCARD"
 
-    if missing_timeline and timeline and timeline > 24:
+    if decision == "NURTURE_LEAD" or (timeline and timeline > 12):
         tier = "LOW"
         decision = "NURTURE_LEAD"
+        reasoning = [
+            f"Purchase timeline is {timeline} months — long-term buyer, low urgency"
+        ]
+        follow_up = None
 
     reasoning = []
     if not missing_budget:
@@ -263,6 +267,11 @@ def rule_based_reasoning(lead_context, matches, missing_fields):
         reasoning.append(
             f"{len(matches)} property match(es) found with avg score {int(sum(m['match_score'] for m in matches[:3]) / min(3, len(matches)))}%"
         )
+
+    if decision == "NURTURE_LEAD":
+        reasoning = [
+            f"Purchase timeline is {timeline} months — long-term buyer, low urgency"
+        ]
 
     if missing_fields:
         reasoning.append(f"Missing information: {', '.join(missing_fields)}")
