@@ -206,15 +206,21 @@ All work complete.
 ## Git Status
 
 - Branch: main
-- Latest commit: `5678dcf` — feat: complete real estate lead qualification agent
-- Pushed: Yes (to origin/main)
+- Latest commit: `22abe0a` — fix: fuzzy location matching, follow-up conversation, JSON parsing
+- Pushed: Yes (origin/main)
 - Working tree: clean
 
 ## Last Work Performed
 
-Project fully built and tested. All 30 tests pass. Streamlit app runs successfully. README.md, CLAUDE.md, and PROJECT_CONTEXT.md created. Committed and pushed to GitHub (commit 5678dcf).
+Project fully built and tested. All 30 tests pass. Streamlit app runs successfully. Fixed: fuzzy location matching (kazhakootam alias), follow-up conversation re-generation bug, JSON parsing in database queries, switch_tab → rerun.
 
 ## NEXT STEPS
 
 All tasks complete. No further steps needed.
+
+## Known Bugs / Issues
+
+- When no LLM is configured, rule-based fallback is used (functionally equivalent)
+- Location matching requires exact or aliased spelling (added aliases for common misspellings)
+- `data/app.db` should be deleted and regenerated if stale data causes issues
 
