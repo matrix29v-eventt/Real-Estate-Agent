@@ -193,3 +193,77 @@ def test_buyer_has_no_data_controls(temp_db):
     labels = [b.label for b in app.button]
     assert "Reset demo data" not in labels
     assert "Sign out" in labels
+
+
+# --------------------------------------------------------------------------- #
+# Button clicks
+#
+# Rendering a view is not enough: a handler that writes to a widget's own key
+# after that widget exists raises StreamlitWidgetAlreadyInstantiatedError, and
+# only a real click reaches it. Every navigation button gets clicked here.
+# --------------------------------------------------------------------------- #
+def _click(app, label: str):
+    for button in app.button:
+        if button.label == label:
+            return button.click().run()
+    raise AssertionError(f"no button labelled {label!r}; saw {[b.label for b in app.button]}")
+
+
+def test_buyer_can_open_an_enquiry_from_the_list(temp_db):
+    temp_db.create_lead(lead_id="L900", name="Rahul Nair",
+                        original_inquiry="3BHK near Technopark", owner="rahul-nair")
+    app = _run(temp_db, account=BUYER, buyer_view="My enquiries")
+    assert not app.exception
+
+    app = _click(app, "Open this enquiry")
+    assert not app.exception, f"opening an enquiry raised: {app.exception}"
+    assert app.session_state["active_lead_id"] == "L900"
+    assert app.session_state["buyer_view"] == "New enquiry"
+
+
+def test_broker_can_open_a_lead_in_the_analysis_view(temp_db):
+    app = _run(temp_db, active_view="Lead Dashboard")
+    app = _click(app, "Open in Lead Analysis")
+    assert not app.exception, f"opening a lead raised: {app.exception}"
+    assert app.session_state["active_view"] == "Lead Analysis"
+
+
+def test_broker_can_open_full_analysis_from_a_turn(temp_db):
+    """The New Lead view offers a jump to the analysis once a turn has run."""
+    from conftest import ScriptedProvider, decision_payload, extraction_payload
+    from services import agent
+
+    result = agent.run_turn(
+        "2BHK in Pattom for 60 lakh",
+        provider=ScriptedProvider([
+            extraction_payload(budget_max=6_000_000, locations=["Pattom"], bhk=2),
+            decision_payload(),
+        ]),
+    )
+    app = _run(temp_db, active_view="New Lead / Conversation",
+               active_lead_id=result.lead_id, last_result=result)
+    app = _click(app, "Open full analysis")
+    assert not app.exception, f"jumping to the analysis raised: {app.exception}"
+    assert app.session_state["active_view"] == "Lead Analysis"
+
+
+def test_sign_out_returns_to_the_login_page(temp_db):
+    app = _run(temp_db, account=BUYER, buyer_view="My enquiries")
+    app = _click(app, "Sign out")
+    assert not app.exception, f"signing out raised: {app.exception}"
+    assert auth.SESSION_KEY not in app.session_state
+    assert "Sign in" in " ".join(h.value for h in app.subheader)
+
+
+def test_broker_reset_demo_data_survives_a_click(temp_db):
+    app = _run(temp_db, active_view="Lead Dashboard")
+    app = _click(app, "Reset demo data")
+    assert not app.exception, f"resetting raised: {app.exception}"
+    assert temp_db.count_rows("leads") == 20
+
+
+def test_starting_a_new_lead_clears_the_active_one(temp_db):
+    app = _run(temp_db, active_view="New Lead / Conversation", active_lead_id="L001")
+    app = _click(app, "Start a new lead")
+    assert not app.exception
+    assert app.session_state["active_lead_id"] is None

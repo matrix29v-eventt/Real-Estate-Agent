@@ -19,6 +19,8 @@ from services.llm_service import LLMCallError, LLMUnavailable
 from ui import components
 from ui.analysis import rebuild_from_db
 
+BUYER_SECTIONS = ["New enquiry", "My enquiries"]
+
 # What the buyer is told, per decision. The agent's internal action name is
 # never shown to them.
 BUYER_STATUS = {
@@ -215,7 +217,10 @@ def _render_my_enquiries(account: auth.Account) -> None:
             if st.button("Open this enquiry", key=f"open_{lead['lead_id']}"):
                 st.session_state["active_lead_id"] = lead["lead_id"]
                 st.session_state["last_result"] = None
-                st.session_state["buyer_view"] = "New enquiry"
+                # buyer_view is the radio's key and the radio already exists on
+                # this run, so it cannot be written here. Hand the change to the
+                # next run instead.
+                st.session_state["pending_buyer_view"] = BUYER_SECTIONS[0]
                 st.rerun()
 
 
@@ -225,14 +230,18 @@ def render(account: auth.Account) -> None:
         st.session_state["buyer_inquiry_text"] = ""
         st.session_state["buyer_followup_text"] = ""
 
-    st.session_state.setdefault("buyer_view", "New enquiry")
+    st.session_state.setdefault("buyer_view", BUYER_SECTIONS[0])
+    pending = st.session_state.pop("pending_buyer_view", None)
+    if pending in BUYER_SECTIONS:
+        st.session_state["buyer_view"] = pending
+
     view = st.radio(
-        "Section", ["New enquiry", "My enquiries"], key="buyer_view",
+        "Section", BUYER_SECTIONS, key="buyer_view",
         horizontal=True, label_visibility="collapsed",
     )
     st.divider()
 
-    if view == "New enquiry":
+    if view == BUYER_SECTIONS[0]:
         _render_new_enquiry(account)
         _render_active_enquiry(account)
     else:
