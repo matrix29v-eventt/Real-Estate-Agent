@@ -230,3 +230,30 @@ def test_summary_is_structured_and_persisted(temp_db):
 def test_empty_message_is_rejected(temp_db):
     with pytest.raises(ValueError):
         agent.run_turn("   ", provider=ScriptedProvider([]))
+
+
+def test_failed_turn_does_not_leave_an_orphan_lead(temp_db):
+    """A turn that never reached a decision must not pollute the dashboard."""
+    before = temp_db.count_rows("leads")
+    provider = ScriptedProvider([])  # runs out immediately, inside stage 1
+    with pytest.raises(AssertionError):
+        agent.run_turn("3BHK near Kazhakkoottam", provider=provider)
+    assert temp_db.count_rows("leads") == before
+
+
+def test_failed_turn_preserves_an_existing_lead(temp_db):
+    """Rollback only removes leads this call created."""
+    provider = ScriptedProvider([
+        extraction_payload(budget_max=6_000_000, locations=["Pattom"], bhk=2),
+        decision_payload(),
+    ])
+    first = agent.run_turn("2BHK in Pattom for 60 lakh", provider=provider)
+
+    with pytest.raises(AssertionError):
+        agent.run_turn("actually make it 3BHK", lead_id=first.lead_id,
+                       provider=ScriptedProvider([]))
+
+    lead = temp_db.get_lead(first.lead_id)
+    assert lead is not None
+    assert lead["requirements"]["budget_max"] == 6_000_000
+    assert len(temp_db.get_actions(first.lead_id)) == 1

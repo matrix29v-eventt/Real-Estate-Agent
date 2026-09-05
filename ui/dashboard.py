@@ -92,10 +92,11 @@ def render() -> None:
         default_index = options.index(active)
     selected = st.selectbox("Lead", options, index=default_index)
 
-    if st.button("Open in Lead Analysis tab"):
+    if st.button("Open in Lead Analysis", type="primary"):
         st.session_state["active_lead_id"] = selected
         st.session_state["last_result"] = None
-        st.success(f"Lead {selected} is now active — open the **Lead Analysis** tab.")
+        st.session_state["pending_view"] = "Lead Analysis"
+        st.rerun()
 
     lead = db.get_lead(selected) or {}
     result = rebuild_from_db(selected)

@@ -146,4 +146,8 @@ def render() -> None:
     with st.expander("Extracted information so far", expanded=True):
         components.render_requirements(result.requirements)
 
-    st.caption("Full reasoning, matches and drafts are on the **Lead Analysis** tab.")
+    if st.button("Open full analysis", type="primary", width="stretch"):
+        st.session_state["pending_view"] = "Lead Analysis"
+        st.rerun()
+    st.caption("Reasoning, evidence, property matches and the generated draft "
+               "are all on the Lead Analysis view.")

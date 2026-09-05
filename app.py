@@ -13,6 +13,8 @@ from ui import analysis, dashboard, new_lead
 
 st.set_page_config(page_title=config.APP_TITLE, page_icon="RE", layout="wide")
 
+VIEWS = ["New Lead / Conversation", "Lead Analysis", "Lead Dashboard"]
+
 
 @st.cache_resource
 def _bootstrap() -> dict:
@@ -79,17 +81,26 @@ def main() -> None:
         ("agent_error", None),
         ("inquiry_text", ""),
         ("followup_text", ""),
+        ("active_view", VIEWS[0]),
     ):
         st.session_state.setdefault(key, default)
 
-    tab_new, tab_analysis, tab_dashboard = st.tabs(
-        ["New Lead / Conversation", "Lead Analysis", "Lead Dashboard"]
+    # st.tabs resets to the first tab on every rerun, which would strand anyone
+    # who navigates here from the dashboard. A keyed selector survives reruns.
+    pending = st.session_state.pop("pending_view", None)
+    if pending in VIEWS:
+        st.session_state["active_view"] = pending
+
+    view = st.radio(
+        "View", VIEWS, key="active_view", horizontal=True, label_visibility="collapsed"
     )
-    with tab_new:
+    st.divider()
+
+    if view == VIEWS[0]:
         new_lead.render()
-    with tab_analysis:
+    elif view == VIEWS[1]:
         analysis.render()
-    with tab_dashboard:
+    else:
         dashboard.render()
 
 

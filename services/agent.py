@@ -443,9 +443,9 @@ def run_turn(
         raise ValueError("An inquiry message is required.")
 
     provider = provider or llm_service.get_provider()
-    warnings: List[str] = []
 
     # --- load or create the lead -------------------------------------------
+    created_here = lead_id is None
     if lead_id:
         lead = db.get_lead(lead_id)
         if lead is None:
@@ -453,6 +453,27 @@ def run_turn(
     else:
         lead_id = db.create_lead(name=name, contact=contact, original_inquiry=message)
         lead = db.get_lead(lead_id)
+
+    try:
+        return _run_turn_inner(message, lead_id, lead, name, contact, provider)
+    except Exception:
+        # A turn that never reached a decision must not leave a half-formed lead
+        # sitting in the dashboard. Only roll back a lead this call created;
+        # an existing lead keeps its history untouched.
+        if created_here:
+            db.delete_lead(lead_id)
+        raise
+
+
+def _run_turn_inner(
+    message: str,
+    lead_id: str,
+    lead: Dict[str, Any],
+    name: Optional[str],
+    contact: Optional[str],
+    provider: LLMProvider,
+) -> TurnResult:
+    warnings: List[str] = []
 
     previous_raw = dict(lead.get("requirements") or {})
     previous = LeadRequirements(**previous_raw) if previous_raw else LeadRequirements()
