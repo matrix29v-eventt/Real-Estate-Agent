@@ -245,6 +245,9 @@ reasoning instructions poorly and tends to pick `ASK_MORE_INFO` for everything;
 This is a model-capability ceiling, not a code defect. The prompts are written
 for `claude-opus-5`; set `ANTHROPIC_API_KEY` for the intended behaviour.
 
+**Fresh-clone verified:** `git clone -b claude/lead-qualification-agent ...` into
+a clean directory contains no `.env` and passes all 63 tests.
+
 **Note on the local `.env`:** a `.env` exists in the working tree (created by the
 user) pointing at `ollama/gemma4`. It is git-ignored and untracked. Because
 gemma4 is slow on CPU, raise `LLM_TIMEOUT_SECONDS` well above the 90s default or
@@ -256,6 +259,10 @@ switch to Anthropic — the default timeout is what produced the orphan leads.
 
 1. Run `python scripts/run_scenarios.py` with `ANTHROPIC_API_KEY` set and confirm
    the five scenarios produce the expected actions. Record results here.
+   (A full pass on `gemma4` was attempted but abandoned: it takes many minutes
+   per call on CPU and competed with the user's own running app for the same
+   Ollama server. The full five-scenario pass on `llama3.2:3b` completed with
+   0 pipeline failures, which is what proves the plumbing.)
 2. Decide with the user how `claude/lead-qualification-agent` relates to the
    parallel implementation already on `main` (see Git Status). Do not force-push.
 3. Optional polish: a small "before → after" delta banner on the Lead Analysis
