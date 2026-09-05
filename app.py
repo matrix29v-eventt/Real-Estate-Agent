@@ -71,6 +71,8 @@ def render_conversation_tab():
     if submit_inquiry and inquiry.strip():
         if not name.strip():
             name = "Anonymous"
+        st.session_state.conversation = []
+        st.session_state.current_lead = None
         result = process_inquiry(name, inquiry)
         st.session_state.current_lead = result["lead_data"]
         st.session_state.conversation = [
@@ -412,7 +414,7 @@ def render_dashboard_tab():
                         {"sender": "buyer", "message": lead["original_inquiry"]}
                     ]
                     st.session_state.lead_id = lead["lead_id"]
-                    st.switch_tab("🔍 Lead Analysis")
+                    st.rerun()
 
 
 if __name__ == "__main__":
