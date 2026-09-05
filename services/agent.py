@@ -108,6 +108,24 @@ def parse_inquiry(inquiry_text: str) -> Dict[str, Any]:
             if loc_val:
                 locations.append(loc_val)
 
+    location_aliases = {
+        "kazhakkoottam": [
+            "kazhakkoottam",
+            "kazhakoottam",
+            "kazhakootam",
+            "kzakkoottam",
+        ],
+        "kozhikode": ["kozhikode", "calicut"],
+    }
+    for loc_key, aliases in location_aliases.items():
+        if loc_key in inquiry_lower and loc_key not in locations:
+            if location_map[loc_key]:
+                locations.append(location_map[loc_key])
+        for alias in aliases:
+            if alias in inquiry_lower:
+                if location_map[loc_key]:
+                    locations.append(location_map[loc_key])
+
     if "trivandrum" in inquiry_lower and not locations:
         pass
 
@@ -427,7 +445,7 @@ def follow_up_inquiry(
     lead_id: str, name: str, answer_text: str, existing_lead: Dict
 ) -> Dict[str, Any]:
     seed_data()
-    conversation_history = existing_lead.get("conversation_history", [])
+    conversation_history = list(existing_lead.get("conversation_history", []))
     conversation_history.append(
         {
             "sender": "buyer",
@@ -447,10 +465,26 @@ def follow_up_inquiry(
     )
 
     lead_data = result["lead_data"]
+    lead_data["conversation_history"] = list(conversation_history)
+    if result["llm_response"]["follow_up_question"]:
+        lead_data["conversation_history"].append(
+            {
+                "sender": "agent",
+                "message": result["llm_response"]["follow_up_question"],
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
     save_lead(lead_data)
     add_conversation(
-        lead_data["lead_id"], "buyer", answer_text, len(conversation_history) + 1
+        lead_data["lead_id"], "buyer", answer_text, len(conversation_history)
     )
+    if result["llm_response"]["follow_up_question"]:
+        add_conversation(
+            lead_data["lead_id"],
+            "agent",
+            result["llm_response"]["follow_up_question"],
+            len(conversation_history) + 1,
+        )
     add_agent_action(
         lead_data["lead_id"],
         lead_data["current_action"],

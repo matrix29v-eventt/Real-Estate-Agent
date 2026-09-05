@@ -157,27 +157,14 @@ def render_conversation_tab():
                     }
                 )
                 st.session_state.current_lead = result["lead_data"]
+                st.session_state.follow_up_result = result
                 st.rerun()
 
         follow_up_question = None
-        if "current_lead" in st.session_state and st.session_state.current_lead:
-            result_data = None
-            try:
-                from services.agent import analyze_lead
-
-                result_data = analyze_lead(
-                    st.session_state.current_lead["name"],
-                    st.session_state.current_lead["original_inquiry"],
-                    st.session_state.current_lead.get("parsed_requirements", {}),
-                    st.session_state.conversation,
-                    st.session_state.lead_id,
-                    st.session_state.current_lead,
-                )
-            except:
-                pass
-
-            if result_data:
-                follow_up_question = result_data["llm_response"]["follow_up_question"]
+        if "follow_up_result" in st.session_state and st.session_state.follow_up_result:
+            follow_up_question = st.session_state.follow_up_result["llm_response"].get(
+                "follow_up_question"
+            )
 
         if follow_up_question and "current_lead" in st.session_state:
             st.info(f"🔔 Agent Follow-up Question: {follow_up_question}")
