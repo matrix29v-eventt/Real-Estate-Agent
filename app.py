@@ -80,6 +80,7 @@ def render_conversation_tab():
         ]
         st.session_state.lead_id = result["lead_data"]["lead_id"]
         st.session_state.follow_up_result = result
+        st.session_state.current_matches = result["matches"]
         st.rerun()
 
     if "current_lead" in st.session_state and st.session_state.current_lead:
@@ -169,6 +170,42 @@ def render_conversation_tab():
 
         if follow_up_question and "current_lead" in st.session_state:
             st.info(f"🔔 Agent Follow-up Question: {follow_up_question}")
+
+        if (
+            not follow_up_question
+            and "current_lead" in st.session_state
+            and st.session_state.current_lead
+        ):
+            lead = st.session_state.current_lead
+            decision = lead.get("current_action", "")
+            if decision == "ESCALATE_TO_BROKER":
+                st.success(
+                    f"✅ This lead is ready for broker escalation! Intent: {lead['intent_tier']} ({lead['intent_score']}/100). Broker should prioritize contacting this lead."
+                )
+                from services.agent import generate_broker_summary
+
+                matches = st.session_state.get("current_matches", [])
+                summary = generate_broker_summary(lead, matches[:3])
+                st.text_area("Broker Summary", value=summary, height=200)
+            elif decision == "SHOW_MATCHING_PROPERTIES":
+                st.success(
+                    f"🔍 Matching properties found! Showing top matches for {lead['intent_tier']} lead."
+                )
+                from services.property_matcher import match_properties
+                from data.properties import PROPERTIES as ALL_PROPS
+
+                req = lead.get("parsed_requirements", {})
+                matches = match_properties(req, ALL_PROPS)
+                st.session_state["current_matches"] = matches
+                for m in matches[:5]:
+                    p = m["property"]
+                    st.markdown(
+                        f"**{p['name']}** — {p['location']} | {p['bhk']}BHK | ₹{p['price'] / 100000:.1f}L | {m['match_score']}% match | {p['availability']} | {p['furnishing']}"
+                    )
+                    for r in m["reasons"][:3]:
+                        st.write(f"  • {r}")
+            else:
+                st.info("✅ Lead profile updated. Continue conversation if needed.")
 
 
 def render_analysis_tab():
