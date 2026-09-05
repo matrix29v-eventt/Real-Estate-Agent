@@ -199,7 +199,17 @@ def get_all_leads():
     c.execute("SELECT * FROM leads ORDER BY updated_at DESC")
     rows = c.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        for key in ["parsed_requirements", "conversation_history", "decision_history"]:
+            if key in d and isinstance(d[key], str):
+                try:
+                    d[key] = json.loads(d[key])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        result.append(d)
+    return result
 
 
 def get_lead_by_id(lid):
@@ -208,7 +218,16 @@ def get_lead_by_id(lid):
     c.execute("SELECT * FROM leads WHERE lead_id=?", (lid,))
     row = c.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if row:
+        d = dict(row)
+        for key in ["parsed_requirements", "conversation_history", "decision_history"]:
+            if key in d and isinstance(d[key], str):
+                try:
+                    d[key] = json.loads(d[key])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        return d
+    return None
 
 
 def save_lead(lead_data):
