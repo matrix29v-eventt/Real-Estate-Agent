@@ -55,7 +55,7 @@ _ROWS = [
      "Ready to Move", None, "premium,technopark-nearby,gated-community,ready-to-move"),
     ("P012", "Sreedhanya Tech Court", "Technopark", "Apartment", 3, 6_650_000, 1340, 1, "Semi-Furnished",
      "Gated Community,Gym,Power Backup,Security,Lift", "AVAILABLE", "Sreedhanya Homes",
-     "Under Construction", "2026-06-30", "technopark-nearby,family,gated-community"),
+     "Under Construction", "2027-02-28", "technopark-nearby,family,gated-community"),
 
     # ---------------- Sreekaryam ----------------
     ("P013", "Jain Sreekaryam Meadows", "Sreekaryam", "Apartment", 2, 5_100_000, 1010, 1, "Unfurnished",
